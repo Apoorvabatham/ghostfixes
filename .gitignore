@@ -1,0 +1,32 @@
+# Secrets — never commit
+.env
+.github_token
+.claude/settings.local.json
+
+# Project-local Python deps (no venv possible; see CLAUDE.md)
+pylibs/
+__pycache__/
+*.pyc
+
+# Node / site build
+node_modules/
+dist/
+.astro/
+
+# Invariant 6: no image files are committed, except pitch-black frames.
+# Those are the deliberate exception — force-add them explicitly (git add -f)
+# so committing an image is always a conscious act, never an accident.
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.bmp
+*.tiff
+
+# Scratch / probe output — Stage 0 is throwaway and may hold raw scraped
+# records that have not been PII-stripped yet (invariant 1).
+probe/out/
+probe/cache/
+scratch/
+*.log
