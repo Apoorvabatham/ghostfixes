@@ -644,6 +644,220 @@ def phase_p3c() -> dict:
     return {"status": resp.status_code}
 
 
+API_GBA = "https://api.bbmpgov.in"
+EC_API = "https://api-admin.everythingcivic.com/api/v1"
+
+
+def phase_p5a() -> dict:
+    """P5a rerun (items 1/3/5): api.bbmpgov.in was sandbox-refused last session;
+    characterise it logged-out now. Standard discovery/doc paths only — no route
+    fuzzing, no ticket IDs."""
+    print("\n=== P5a: api.bbmpgov.in reachable? surface characterisation ===")
+    result: dict = {}
+    std_paths = [
+        "/gba/v1",
+        "/",
+        "/gba/v1/openapi.json",
+        "/gba/v1/swagger.json",
+        "/gba/v1/docs",
+        "/open311/v2/discovery.json",
+        "/georeport/v2/discovery.json",
+    ]
+    for i, path in enumerate(std_paths):
+        r = fetch(API_GBA + path, note=f"gba-api std-path {i + 1}/{len(std_paths)}")
+        if r is None:
+            continue
+        info = {
+            "status": r.status_code,
+            "ctype": r.headers.get("content-type", ""),
+            "server": r.headers.get("server", ""),
+            "bytes": len(r.content),
+        }
+        result[path] = info
+        if "json" in info["ctype"]:
+            try:
+                head = f"keys={list(r.json().keys())}"
+            except Exception:
+                head = re.sub(r"\s+", " ", r.text[:150])
+        else:
+            head = re.sub(r"\s+", " ", r.text[:150])
+        print(f"  {path}: {info['status']} {info['ctype'][:40]} "
+              f"server={info['server']!r} {info['bytes']}B :: {head[:180]}")
+
+    r = fetch("https://updates.bbmpgov.in/public",
+              note="bbmpUpdates base from GBA bundle config")
+    if r is not None:
+        print(f"  updates.bbmpgov.in/public -> {r.status_code} "
+              f"{r.headers.get('content-type', '')[:40]} {len(r.content)}B")
+    return result
+
+
+def phase_p5b() -> dict:
+    """P5b rerun (items 3/5): ehelpline over *verified* TLS — last session only
+    got through with verify=False, which left a cert caveat on every finding."""
+    import httpx
+
+    print("\n=== P5b: support.bbmpgov.in certificate status (verified TLS) ===")
+    url = "https://support.bbmpgov.in/ehelpline/CitizensSearchTickets.aspx"
+    LIMITER.wait()
+    try:
+        strict = httpx.Client(headers={"User-Agent": USER_AGENT},
+                              follow_redirects=True)
+        r = strict.get(url, timeout=30.0)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  verified TLS FAILED: {type(exc).__name__}: {str(exc)[:200]}")
+        return {"verified_tls": False}
+    print(f"  verified TLS OK: {r.status_code} {len(r.content)}B")
+    return {"verified_tls": True, "status": r.status_code}
+
+
+def phase_p5c() -> dict:
+    """P5c rerun (item 3, Delhi): does the vendor backend serve anything keyless?
+
+    Last session the SPA bundle showed an axios interceptor attaching embedded
+    app_id/api_key headers to every call — replaying those is forbidden by
+    invariant 4. Now that *.everythingcivic.com is actually reachable, record
+    what the backend returns WITHOUT credentials.
+    """
+    print("\n=== P5c: api-admin.everythingcivic.com keyless access check ===")
+    result: dict = {}
+    for label, path in [("base", "/"), ("known-route", "/citizen_issue/index")]:
+        r = fetch(EC_API + path, note=f"keyless {label}")
+        if r is None:
+            continue
+        body = re.sub(r"\s+", " ", r.text[:220])
+        print(f"  {path}: {r.status_code} {len(r.content)}B :: {body}")
+        result[label] = {"status": r.status_code}
+    return result
+
+
+def phase_p6a() -> dict:
+    """P6a: has the live GBA portal shipped a newer bundle than yesterday's
+    capture? If so, re-mine its config for the current API base — the old one
+    may be retired."""
+    print("\n=== P6a: bbmp.gov.in bundle freshness re-check ===")
+    r = fetch("https://bbmp.gov.in/", save_to="pages/bbmp_home_rerun.html",
+              note="home rerun")
+    if r is None or r.status_code >= 400:
+        return {}
+    m = re.search(r"""<script[^>]*src=["']([^"']*main\.[a-f0-9]+\.js)["']""", r.text)
+    if not m:
+        print("  no main.*.js found in shell")
+        return {}
+    bundle_url = urljoin("https://bbmp.gov.in/", m.group(1))
+    print(f"  current bundle: {bundle_url}")
+    saved = OUT / "pages/bbmp_main_bundle.js"
+    if saved.exists() and bundle_url.endswith("main.b20559ca.js"):
+        print("  same as yesterday's capture — no refetch needed")
+        return {"bundle": bundle_url, "changed": False}
+    rb = fetch(bundle_url, save_to="pages/bbmp_main_bundle_rerun.js",
+               note="fresh SPA bundle")
+    if rb is None:
+        return {"bundle": bundle_url}
+    cfg = re.search(r'\{\s*baseApi\s*:\s*"[^"]*"[^;}]{0,1500}', rb.text)
+    print(f"  config object: {cfg.group(0)[:900] if cfg else 'NOT FOUND'}")
+    comp = sorted(set(re.findall(
+        r"[\"']([A-Za-z0-9_/.-]*(?:complaint|grievan|track|status)[A-Za-z0-9_/.-]*)[\"']",
+        rb.text, re.I)))
+    print(f"  complaint-ish literals ({len(comp)}): {comp[:20]}")
+    return {"bundle": bundle_url, "changed": True}
+
+
+def phase_p6b() -> dict:
+    """P6b: pin api.bbmpgov.in's failure mode. Family-mate updates.bbmpgov.in
+    returns 200 through the same proxy, so this is NOT an allowlist block; try
+    plaintext + apex to see whether the failure shape changes."""
+    print("\n=== P6b: api.bbmpgov.in failure-mode pinning ===")
+    result = {}
+    for label, url in [
+        ("http-variant", "http://api.bbmpgov.in/gba/v1"),
+        ("apex", "https://bbmpgov.in/"),
+        ("retry-https", "https://api.bbmpgov.in/gba/v1"),
+    ]:
+        r = fetch(url, note=label)
+        if r is None:
+            continue
+        body = re.sub(r"\s+", " ", r.text[:160])
+        print(f"  {label}: {r.status_code} {len(r.content)}B "
+              f"server={r.headers.get('server', '')!r} :: {body}")
+        result[label] = r.status_code
+    return result
+
+
+def phase_p6c() -> dict:
+    """P6c: ONE keyless, empty POST to the known Delhi vendor route. P5c showed
+    the backend discusses routes without credentials; this tests whether an auth
+    middleware exists at all. No credentials, no IDs, no payload."""
+    import httpx
+
+    print("\n=== P6c: api-admin.everythingcivic.com keyless empty POST ===")
+    LIMITER.wait()
+    client = httpx.Client(headers={"User-Agent": USER_AGENT}, follow_redirects=True)
+    try:
+        r = client.post(EC_API + "/citizen_issue/index", json={}, timeout=30.0)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  POST failed: {type(exc).__name__}: {str(exc)[:200]}")
+        return {}
+    body = re.sub(r"\s+", " ", r.text[:300])
+    print(f"  POST -> {r.status_code} {len(r.content)}B :: {body}")
+    return {"status": r.status_code}
+
+
+def phase_p7a() -> dict:
+    """P7a: two surfaces seen live this session but never inspected — the
+    bbmpgov.in apex (81 KB SSR, never probed before today) and
+    updates.bbmpgov.in/public (200 in P5a, body unsaved). Scan both logged-out."""
+    print("\n=== P7a: bbmpgov.in apex + updates.bbmpgov.in/public ===")
+    result: dict = {}
+    for label, url in [
+        ("apex", "https://bbmpgov.in/"),
+        ("updates", "https://updates.bbmpgov.in/public"),
+    ]:
+        r = fetch(url, save_to="pages/" + label + "_rerun.html", note=label)
+        if r is None or r.status_code >= 400:
+            continue
+        text = r.text
+        m = re.search(r"<title[^>]*>([^<]{1,120})", text, re.I)
+        print(f"\n-- {label}: {r.status_code} {len(r.content)}B "
+              f"__VIEWSTATE={has_viewstate(text)} title={m.group(1).strip() if m else '?'}")
+        links = scan_links_all(text, str(r.url))
+        rel = [u for u in links if KEYWORDS.search(u)]
+        (OUT / f"{label}_links_rerun.json").write_text(json.dumps(links, indent=2))
+        print(f"   links {len(links)} total ({len(rel)} keyword-matched)")
+        for u in rel[:25]:
+            print(f"   {u}")
+        result[label] = {"status": r.status_code, "links": len(links)}
+    return result
+
+
+def phase_p7b() -> dict:
+    """P7b: updates.bbmpgov.in/public renders a DataTables table via its own
+    /js/dashboard.js — mine that script for the JSON endpoint(s) behind the
+    page (Stage 0 item 5), then fetch what it names."""
+    print("\n=== P7b: GBA updates dashboard.js -> endpoint mining ===")
+    r = fetch("https://updates.bbmpgov.in/js/dashboard.js",
+              save_to="pages/gba_updates_dashboard.js", note="dashboard script")
+    if r is None:
+        return {}
+    js = r.text
+    print(f"  dashboard.js {len(r.content)}B")
+    urls = sorted(set(re.findall(
+        r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+", js)))
+    rels = sorted(set(re.findall(
+        r"[\"']((?:/[A-Za-z0-9_.-]+){1,4}(?:\.[a-z]+)?)[\"']", js)))
+    fetch_hints = [p for p in rels + urls if re.search(
+        r"api|json|data|list|fetch|ajax|php", p, re.I)]
+    print(f"-- endpoint-ish literals ({len(fetch_hints)}) --")
+    for p in fetch_hints[:25]:
+        print(f"   {p[:140]}")
+    ajax = re.findall(
+        r"(?:fetch\(|axios\.|url\s*:)\s*[\"']([^\"']+)[\"']", js)
+    print(f"-- explicit call targets ({len(ajax)}) --")
+    for p in sorted(set(ajax))[:15]:
+        print(f"   {p[:140]}")
+    return {"literals": fetch_hints, "calls": sorted(set(ajax))}
+
+
 CKAN = "https://data.opencity.in/api/3/action"
 
 
@@ -716,6 +930,15 @@ PHASES = {
     "p3c": ("ehelpline ticket lookup round-trip (items 3-6)", phase_p3c),
     "p4a": ("mcd.everythingcivic.com public pages (items 3-5, Delhi)", phase_p4a),
     "p4b": ("everythingcivic bundle endpoint mining (item 5)", phase_p4b),
+    "p5a": ("api.bbmpgov.in reachable-surface characterisation (items 1, 3, 5)",
+            phase_p5a),
+    "p5b": ("ehelpline verified-TLS recheck (items 3, 5)", phase_p5b),
+    "p5c": ("everythingcivic keyless access check (Delhi items 3-5)", phase_p5c),
+    "p6a": ("GBA portal bundle freshness + config re-mine (items 1, 5)", phase_p6a),
+    "p6b": ("api.bbmpgov.in failure-mode pinning", phase_p6b),
+    "p6c": ("everythingcivic keyless empty POST (Delhi)", phase_p6c),
+    "p7a": ("bbmpgov.in apex + updates.bbmpgov.in/public inspection", phase_p7a),
+    "p7b": ("GBA updates dashboard.js endpoint mining (item 5)", phase_p7b),
 }
 
 

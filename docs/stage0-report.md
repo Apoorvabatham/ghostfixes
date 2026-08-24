@@ -130,9 +130,91 @@ the honest answer is option 3 ("the data does not support the central metric")
 
 ## Blockers requiring the maintainer
 
-1. `api.bbmpgov.in` still refused by the sandbox proxy after the requested
-   allowlist change — verify the entry (family `bbmpgov.in`) or restart the
-   session so settings reload.
-2. Push token lacks GitHub `workflow` scope → item 7 workflow cannot be pushed.
+1. ~~Allowlist~~ **resolved 2026-08-25** — see addendum below. Note that
+   `api.bbmpgov.in` now fails *past* the allowlist (gateway-level), which is a
+   separate, portal-side question.
+2. Push token lacks GitHub `workflow` scope → item 7 workflow cannot be pushed;
+   `.github/workflows/stage0-reachability.yml` left in the working tree, push
+   retried when the scope is granted.
 3. Decision on the Stage 1 gate: closure dates and sub-ward locations exist on
-   no reachable source; pick option 1/2/3 from CLAUDE.md §Stage 1 in writing.
+   no reachable source; see `docs/stage1-gate.md` for the live state of that
+   question and the decision rule once the last candidate source is testable.
+
+---
+
+# Addendum — 2026-08-25 rerun (allowlist restored)
+
+Session restarted after `settings.local.json` was rewritten mid-session lost
+the new entries. Restored families: `bbmpgov.in`, `*.bbmpgov.in`,
+`everythingcivic.com`, `*.everythingcivic.com`. Phases `p5a–p7b` re-ran Stage 0
+items 3–6 against every now-reachable host. Method unchanged (same limiter,
+UA, link-following discipline); two additions: one keyless empty POST against
+the Delhi vendor API, and first-ever fetches of the `bbmpgov.in` apex.
+
+## What changed per question
+
+**Item 1 (sanctioned API).** `api.bbmpgov.in/gba/v1` — named by the GBA bundle,
+unchanged since yesterday's capture (`main.b20559ca.js`, same config) — returns
+a gateway **502 on both http and https across all probed paths**, while family
+hosts through the *same egress* succeed (`updates.bbmpgov.in` 200, apex
+`bbmpgov.in` 200). So this is **not an allowlist block**: origin down, DNS gap,
+or geo-fence — indistinguishable from inside the sandbox, recorded as
+"unreachable, cause undetermined". Open311 discovery paths on it remain
+untestable.
+
+**Item 3 (logged-out visibility).**
+- *Delhi — definitively closed.* `api-admin.everythingcivic.com/api/v1/`
+  keyless → 404 Laravel route-not-found; `/citizen_issue/index` GET keyless →
+  405 "Supported methods: POST"; one keyless empty POST → **401 "Access denied,
+  your session is expired"**. A real auth middleware sits in front of every
+  route, and replaying the page-embedded `app_id`/`api_key` is forbidden by
+  invariant 4. No sanctioned access route exists — measured, not assumed.
+- *Bengaluru — unchanged, and now precisely bounded.* Every allowed surface is
+  exhausted: ehelpline search fronts only the e-Khata system ("Ekata helpline";
+  published Sahaaya IDs return not-found), `sahaaya2.bbmp.gov.in` is the
+  officials' login, the GBA portal is static, `updates.bbmpgov.in/public` is a
+  news CMS (DataTables over server-rendered rows, admin edit stubs, no JSON),
+  and the `bbmpgov.in` apex is a **GoDaddy parked page**. The portal itself
+  points citizens at **`https://nammabengaluru.org.in/login`** ("SAHAAYA 2.0
+  · Public Grievance") — the actual citizen face of the system behind the
+  published dataset — and that host is **off the allowlist**. Whether it offers
+  any logged-out per-ticket view (its entry URL is literally `/login`, a poor
+  sign) is therefore unknown, not negative.
+- TLS note: verified-TLS against `support.bbmpgov.in` fails with "unable to get
+  local issuer certificate" while other family hosts verify cleanly — an
+  incomplete chain served by the portal, confirming last session's
+  `verify=False` fallback was necessary and is a property of their infra.
+
+**Items 4 & 6 (images / EXIF).** Still zero legitimate resolution-photo URLs
+obtainable from any allowed surface. Both remain untestable, and both now have
+exactly one remaining candidate source: the Sahaaya 2.0 citizen portal.
+
+**Item 5 (JSON vs VIEWSTATE).** Table additions: everythingcivic backend =
+Laravel JSON API behind auth middleware; GBA SPA → currently-unreachable API
+host; updates host = server-rendered HTML + DataTables; apex = parked.
+
+**Housekeeping.** Raw page `mcd_portal.html` (last session, gitignored) held 39
+Indian-mobile-pattern matches; deleted under invariant 1. New saves this
+session were audited: none contain phone/email patterns.
+
+## Gate-relevant fields after the rerun
+
+- **Closure/resolution timestamp: supplied by no reachable source.**
+- **Location finer than ward: supplied by no reachable source.**
+
+Check 1 remains uncomputable on currently-reachable sources. Per the user's
+instruction this is reported before any proposal to proceed on image checks
+alone; the single remaining candidate source has been requested through the
+allowlist procedure instead of concluded about.
+
+## Updated blockers / asks
+
+1. **Domain request:** `nammabengaluru.org.in` and `*.nammabengaluru.org.in` —
+   the citizen Sahaaya 2.0 web portal (linked from the official GBA portal);
+   sole remaining candidate for closure dates, sub-ward location, and
+   resolution-photo URLs. Secondary, optional, same rationale:
+   `ipgrs.karnataka.gov.in` (state "Janaspandana" grievance portal, linked from
+   the GBA portal). Also whatever API host the Sahaaya bundle names once seen.
+2. Workflow-file push still awaits PAT `workflow` scope.
+3. `api.bbmpgov.in` gateway failure is portal-side; nothing further actionable
+   from here unless it starts answering.
