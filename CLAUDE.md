@@ -229,6 +229,23 @@ Astro/Vite + Leaflet. GitHub Actions cron. No paid services anywhere.
 - Starting a second city before the first one has actually shipped (Stage 7)
 - Editing anything in `pipeline/` to accommodate a specific city's portal
 
+## Credentials — do not look at them
+
+`.github_token` and `.env` hold live secrets. **Never `cat`, `head`, `wc`, `grep`,
+echo, log, or otherwise open them**, and never paste their contents into a command,
+a file, or your own output. They exist to be used by tooling, not read by you. Reads
+are blocked at the OS level, so an attempt will simply fail — that is expected, not a
+bug to route around.
+
+This matters more than usual here: this session runs on a third-party model whose
+provider retains prompts, so anything that lands in your context has left the machine.
+Pushing already works without you touching the token — the credential is embedded in
+the git remote URL. `git push origin main` is all you need.
+
+Never run `git remote add`, `set-url`, or `remove`, and never print the output of
+`git remote -v` or `.git/config` without redacting anything after `https://` and
+before `@`.
+
 ## Commit attribution
 
 This session runs a third-party model (`stealth/ox-alpha`) through OpenRouter, not
