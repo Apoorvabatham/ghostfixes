@@ -305,6 +305,17 @@ Commit with no AI co-author trailer at all.
   allowlist* for the procedure.
 - Per invariant 4, a genuine access restriction — a login wall, a 403 with the domain
   allowed — is an answer, not an obstacle. Report it and stop.
+- `git config` does not work from inside the sandbox. `.git/config` is a protected
+  path, and `.git/config.lock` is bind-mounted to `/dev/null`, so a write attempt
+  fails with `could not lock config file`. This is the sandbox protecting git config
+  from modification, not a broken repo. Identity is already set repo-locally
+  (`Apoorvabatham <bathamapoorva@gmail.com>`) from outside the sandbox and is readable
+  to you, so commits just work — do not try to set it, and do not fall back to
+  `GIT_AUTHOR_*` env var overrides.
+- Pushing `.github/workflows/*` needs a token permission separate from repository
+  contents. If a push is rejected with `refusing to allow a Personal Access Token to
+  create or update workflow`, that is the token scope, not the sandbox — stop and ask,
+  per the credentials rules. Never attempt to work around it.
 - No Python venv is possible here (`ensurepip` is missing from the system Python).
   Install project-local dependencies with
   `python3 -m pip install --target ./pylibs <pkg>` and run with
