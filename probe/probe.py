@@ -472,6 +472,178 @@ def phase_p3a() -> dict:
     return result
 
 
+# Exact public URLs as printed on mcdonline.nic.in/portal (invariant 4: we
+# browse these links as published; the embedded app_id/api_key is never reused
+# against any other endpoint).
+MCD_CREATE_URL = ("https://mcd.everythingcivic.com/citizen/createissue"
+                  "?app_id=U2FsdGVkX180J3mGnJmT5QpgtPjhfjtzyXAAccBUxGU%3D"
+                  "&api_key=e34ba86d3943bd6db9120313da011937189e6a9625170905"
+                  "750f649395bcd68312cf10d264c9305d57c23688cc2e5120")
+MCD_DETAIL_URL = ("https://mcd.everythingcivic.com/citizen/issuedetail"
+                  "?app_id=U2FsdGVkX180J3mGnJmT5QpgtPjhfjtzyXAAccBUxGU%3D"
+                  "&api_key=e34ba86d3943bd6db9120313da011937189e6a9625170905"
+                  "750f649395bcd68312cf10d264c9305d57c23688cc2e5120")
+
+
+def phase_p4a() -> dict:
+    """P4a: fetch the two public MCD-311 vendor pages verbatim; identify the
+    tech stack and any further public endpoints they reference."""
+    print("\n=== P4a: mcd.everythingcivic.com public pages ===")
+    result = {}
+    for label, url, save in [
+        ("createissue", MCD_CREATE_URL, "pages/mcd_ec_createissue.html"),
+        ("issuedetail", MCD_DETAIL_URL, "pages/mcd_ec_issuedetail.html"),
+    ]:
+        r = fetch(url, save_to=save, note=label)
+        if r is None:
+            continue
+        text = r.text
+        print(f"\n-- {label}: {r.status_code} {len(r.content)}B "
+              f"__VIEWSTATE={has_viewstate(text)}")
+        # what loads next? script bundles, XHR paths, meta refresh
+        scripts = sorted(set(re.findall(r"""<script[^>]*src=["']([^"']+)["']""", text, re.I)))
+        for s in scripts[:15]:
+            print(f"   script: {urljoin(url, s)}")
+        xhrs = sorted(set(re.findall(
+            r"""["']((?:/[A-Za-z0-9_.-]+){1,4}(?:\.(?:json|js))?["'])""",
+            text)))[:20]
+        if not scripts:
+            head = re.sub(r"\s+", " ", text)[:400]
+            print(f"   body head: {head}")
+    return result
+
+
+def phase_p4b() -> dict:
+    """P4b: mine the MCD-311 vendor SPA bundle for API endpoints and routes."""
+    print("\n=== P4b: everythingcivic SPA bundle -> endpoint/route mining ===")
+    r = fetch("https://mcd.everythingcivic.com/static/js/main.5ecd4fb8.js",
+              save_to="pages/mcd_ec_bundle.js", note="SPA bundle")
+    if r is None:
+        return {}
+    js = r.text
+    print(f"  bundle {len(r.content)} bytes")
+
+    urls = sorted(set(re.findall(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+", js)))
+    ext = [u for u in urls if "everythingcivic" not in u]
+    print(f"-- external hosts referenced --")
+    hosts = sorted(set(re.match(r"https?://([^/]+)", u).group(1) for u in urls))
+    for h in hosts:
+        print(f"   {h}")
+
+    rels = sorted(set(re.findall(
+        r"[\"']((?:/[A-Za-z0-9_.-]+){1,5})[\"']", js)))
+    kw = [p for p in rels if re.search(
+        r"issue|track|status|complaint|grievance|detail|citizen", p, re.I)]
+    print(f"-- path literals matching keywords ({len(kw)}) --")
+    for p in kw[:50]:
+        print(f"   {p}")
+
+    # react-router style route table entries
+    routes = sorted(set(re.findall(r"path:\s*[\"']([^\"']{1,60})[\"']", js)))
+    print(f"-- router paths ({len(routes)}) --")
+    for p in routes[:40]:
+        print(f"   {p}")
+
+    (OUT / "p4b_endpoints.json").write_text(json.dumps(
+        {"hosts": hosts, "paths": kw, "routes": routes}, indent=2))
+    return {}
+
+
+def phase_p3b() -> dict:
+    """P3b: retry api.bbmpgov.in; probe support.bbmpgov.in ehelpline with
+    flagged SSL-unverified fallback."""
+    print("\n=== P3b: api.bbmpgov.in retry + ehelpline (cert-flagged) ===")
+    result = {}
+    r = fetch("https://api.bbmpgov.in/gba/v1", note="retry after allowlist change")
+    if r is not None:
+        print(f"  api.bbmpgov.in/gba/v1 -> {r.status_code} {r.text[:150]!r}")
+        result["api_status"] = r.status_code
+
+    r = fetch("https://support.bbmpgov.in/ehelpline/CitizensCreateTickets.aspx",
+              save_to="pages/bbmp_ehelpline_create.html", note="cert-fallback probe")
+    if r is not None:
+        text = r.text
+        vs = has_viewstate(text)
+        print(f"\n  ehelpline {r.status_code} {len(r.content)}B __VIEWSTATE={vs}")
+        result["ehelpline_viewstate"] = vs
+        links = scan_links_all(text, "https://support.bbmpgov.in/ehelpline/")
+        rel = [u for u in links if KEYWORDS.search(u)]
+        for u in rel[:20]:
+            print(f"    {u}")
+        # look for sibling .aspx pages referenced anywhere (status/track views)
+        sibs = sorted(set(re.findall(
+            r"""([A-Za-z0-9_]+\.aspx)["'?]""", text)))
+        print(f"  aspx siblings: {sibs[:25]}")
+        result["aspx_siblings"] = sibs
+    return result
+
+
+def phase_p3c() -> dict:
+    """P3c: CitizensSearchTickets.aspx — public logged-out ticket lookup?
+    Uses exactly one Complaint ID taken from BBMP's own published open
+    dataset (not guessed, not enumerated). Raw response stays in probe/out;
+    console shows structure/status/image URLs only."""
+    import httpx
+
+    print("\n=== P3c: ehelpline CitizensSearchTickets (logged-out lookup) ===")
+    base = "https://support.bbmpgov.in/ehelpline/CitizensSearchTickets.aspx"
+    r = fetch(base, save_to="pages/bbmp_search_tickets.html")
+    if r is None:
+        return {}
+    html = r.text
+    inputs = re.findall(r"""<input[^>]*name=["']([^"']+)["'][^>]*""", html)
+    selects = re.findall(r"""<select[^>]*name=["']([^"']+)["']""", html)
+    visible = [i for i in inputs if not i.startswith("__")]
+    print(f"  form inputs: {visible}")
+    print(f"  form selects: {selects}")
+    print(f"  has EVENTVALIDATION: {'__EVENTVALIDATION' in html}")
+    labels = re.findall(r"""<label[^>]*>([^<]{1,60})</label>""", html)
+    print(f"  labels: {labels[:12]}")
+
+    # Round-trip like a browser: GET -> post back VIEWSTATE/EVENTVALIDATION +
+    # the first visible field filled with the one published ID.
+    vs = re.search(r'name="__VIEWSTATE"[^>]*value="([^"]*)"', html)
+    ev = re.search(r'name="__EVENTVALIDATION"[^>]*value="([^"]*)"', html)
+    vg = re.search(r'name="__VIEWSTATEGENERATOR"[^>]*value="([^"]*)"', html)
+    if not (vs and ev and visible):
+        print("  !! cannot round-trip: missing viewstate/validation/fields")
+        return {}
+    published_id = "20771690"  # from bbmp-grievances-data 2025 CSV row _id 1
+    data = {
+        "__VIEWSTATE": vs.group(1),
+        "__EVENTVALIDATION": ev.group(1),
+    }
+    if vg:
+        data["__VIEWSTATEGENERATOR"] = vg.group(1)
+    ticket_field = [f for f in visible if f.lower().endswith("txtticketno")]
+    data[ticket_field[0] if ticket_field else visible[-1]] = published_id
+    print(f"  filling field: {ticket_field or visible[-1]}")
+    # submit button name=value if present
+    btn = re.search(r'<input[^>]*type="(?:submit|button)"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', html)
+    if btn and not btn.group(1).startswith("__"):
+        data[btn.group(1)] = btn.group(2)
+        print(f"  submitting via button {btn.group(1)}")
+
+    LIMITER.wait()
+    loose = httpx.Client(headers={"User-Agent": USER_AGENT},
+                         follow_redirects=True, verify=False)
+    resp = loose.post(base, data=data, timeout=30.0)
+    (OUT / "pages/bbmp_search_result.html").write_bytes(resp.content[:5_000_000])
+    print(f"  POST -> {resp.status_code} {len(resp.content)}B "
+          f"(saved pages/bbmp_search_result.html)")
+    imgs = sorted(set(re.findall(
+        r"""(?:src|href)=["']([^"']*(?:\.jpe?g|\.png|image[^"']*))["']""",
+        resp.text, re.I)))
+    print(f"  image-ish refs ({len(imgs)}):")
+    for u in imgs[:15]:
+        print(f"    {urljoin(str(resp.url), u)[:140]}")
+    txt = re.sub(r"<script.*?</script>|<style.*?</style>", "", resp.text, flags=re.S)
+    txt = re.sub(r"<[^>]+>", " ", txt)
+    txt = re.sub(r"\s+", " ", txt)
+    print(f"  text head (PII-scan before quoting further): {txt[:300]!r}")
+    return {"status": resp.status_code}
+
+
 CKAN = "https://data.opencity.in/api/3/action"
 
 
@@ -540,6 +712,10 @@ PHASES = {
     "p2c": ("sample grievance rows + bbmp.gov.in tracking surface (items 2, 3)", phase_p2c),
     "p2d": ("GBA SPA bundle endpoint mining (item 5)", phase_p2d),
     "p3a": ("sahaaya2 / ehelpline / api base surface (items 3-5)", phase_p3a),
+    "p3b": ("api.bbmpgov.in retry + ehelpline cert-flagged probe", phase_p3b),
+    "p3c": ("ehelpline ticket lookup round-trip (items 3-6)", phase_p3c),
+    "p4a": ("mcd.everythingcivic.com public pages (items 3-5, Delhi)", phase_p4a),
+    "p4b": ("everythingcivic bundle endpoint mining (item 5)", phase_p4b),
 }
 
 
