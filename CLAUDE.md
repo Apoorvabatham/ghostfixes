@@ -75,64 +75,8 @@ surviving EXIF wins.
 destroy the brightness heuristic. Garbage and potholes are the target: daytime,
 visually obvious, high volume.
 
-## Stage 1.5 — Portal survey · reconnaissance only, strictly time-boxed
-
-Runs **after** scope lock, **before** Stage 2. Purpose: find out how much the portals
-differ *before* the adapter interface gets baked in, so Stage 6 forkability is a design
-we chose rather than a retrofit we regret. An interface derived from exactly one portal
-will fit exactly one portal.
-
-**This stage looks. It does not build.** You are still committed to the one city and one
-category locked in Stage 1 — this does not reopen that decision, and nothing surveyed
-here gets scraped, ingested, or turned into a working adapter now.
-
-Survey **2–3 other Indian municipal portals** (different cities, and ideally a different
-portal vendor — reusing the same vendor teaches you nothing about generalising). For
-each, record only what's visible from a handful of public page loads:
-
-- City, portal URL, and the vendor/software behind it if identifiable
-- Open311 or any sanctioned API? (probe the same discovery paths as Stage 0)
-- Is logged-out browsing of closed tickets possible at all?
-- Are resolution photos publicly fetchable without a session?
-- Does EXIF survive? (a couple of images is enough — don't bulk-pull)
-- The shape of the data: JSON endpoint, server-rendered HTML, or ASP.NET `__VIEWSTATE`
-- What a ticket URL looks like, and whether ward/zone/category are exposed as fields
-
-Write it to `docs/portal-survey.md` as a comparison table, then add a short section:
-**what varies across portals, and therefore what the `adapters/<city>.py` interface must
-abstract.** That conclusion is the actual deliverable — the table is just evidence.
-
-Constraints, all of them non-negotiable:
-
-- **Every hard invariant still applies in full.** Especially: 1 request per 3 seconds,
-  honest User-Agent, no login flows, no ID enumeration, and access restrictions are
-  answers rather than obstacles. A survey is not a licence to poke harder.
-- **Time-box: 2 hours.** If a portal is fighting you, record "could not determine
-  without authentication" and move on. An honest unknown in the table is worth more
-  than an hour of prodding.
-- **Do not write `adapters/` files for surveyed cities.** One adapter — the Stage 1
-  city — is all that exists until Stage 6.
-- **Do not expand scope.** If a surveyed portal looks like better data than the one you
-  locked, that is a note in `docs/portal-survey.md` and nothing more. Stop and ask
-  before acting on it.
-
-### Expanding the network allowlist
-
-The sandbox is default-deny and **you cannot widen it yourself** — settings files are
-write-protected inside the sandbox by design, so any attempt to edit them will fail.
-That is intentional, not a bug to work around.
-
-When you need domains this stage can't reach:
-
-1. Stop.
-2. List the exact domains, one per line, and say what each is for.
-3. Ask for them to be added, then wait.
-
-Never infer that a portal blocks you when the sandbox might be what refused the
-connection — those two look identical from inside a failed request, and confusing them
-puts a false finding into the survey. If a request fails on a host that isn't on the
-allowlist, the honest report is "not yet reachable from this sandbox," not "the portal
-denied us."
+Every other city waits. Not in parallel, not "while that's running" — the next city
+starts only once this one is shipped, at Stage 7.
 
 ## Stage 2 — Ingestion
 
@@ -196,10 +140,65 @@ README good enough that a civic group in another city clones it, edits one adapt
 file, and runs. Adapters live in `adapters/<city>.py` behind a common interface so a
 new portal is one file, not a fork of the pipeline.
 
-The interface is validated against `docs/portal-survey.md` from Stage 1.5: every
-variation recorded there must be expressible through the adapter interface without
-touching `pipeline/`. If one isn't, the interface is wrong — fix it here, where it is
-still cheap, rather than discovering it when someone else's fork fails.
+At this point the interface is a guess — it has only ever had to fit one portal. Do not
+over-engineer it here trying to predict what city 2 needs. Stage 7 is what tests it, and
+a wrong guess is cheaper to correct with a real second portal in hand than to design
+around in advance.
+
+## Stage 7 — Next city · repeat, one at a time
+
+Only once the current city is **actually shipped** — pipeline running, Stage 4 precision
+measured and reviewed, site published, README forkable. Not "nearly done." A second city
+started on top of a half-finished first city produces two half-finished cities.
+
+Then pick the next city and run it through the same ladder:
+
+1. **Stage 0 probe, again, for the new portal.** Every finding is portal-specific — API
+   availability, logged-out visibility, EXIF survival, whether it's JSON or
+   `__VIEWSTATE`. Assume nothing carries over. Report before building.
+2. **Ask for the new domains.** They will not be reachable — see *Expanding the network
+   allowlist* below. Do this first; it blocks everything else.
+3. **Stage 1 scope lock** for that city: one category, same reasoning as before, still
+   not streetlights.
+4. **Write `adapters/<city>.py` and nothing else.** This is the real forkability test.
+   If a new portal needs changes inside `pipeline/`, the adapter interface is wrong —
+   fix the interface so the change lives in the adapter, rather than special-casing the
+   pipeline per city. A pipeline with `if city == "..."` in it has failed Stage 6.
+5. **Stage 4 validation again, per city.** Precision does not transfer. A threshold
+   tuned on Bengaluru garbage photos is not a measured claim about Delhi. Re-label,
+   re-measure, and publish that city's own precision figure next to its numbers.
+6. Add the city to the site, with its own "last successful run" timestamp.
+
+Rules for the loop:
+
+- **One city at a time.** Never two in flight.
+- **Never cross-contaminate detection.** No shared image-hash corpus across cities
+  unless it's deliberate and documented — a recycled-image match across two different
+  municipalities means something quite different from one inside a single ward, and it
+  needs saying explicitly rather than falling out of an implementation detail.
+- **Do not rank cities against each other.** Same reasoning as not ranking wards:
+  portal-mix, category-mix and reporting-culture differences make the comparison
+  indefensible, and it invites exactly the headline we can't stand behind.
+- Every hard invariant applies unchanged to every new city. There is no
+  "we already validated this approach" exemption.
+
+## Expanding the network allowlist
+
+The sandbox is default-deny and **you cannot widen it yourself** — settings files are
+write-protected inside the sandbox by design, so any attempt to edit them will fail.
+That is intentional, not a bug to work around.
+
+When you need a domain that isn't reachable:
+
+1. Stop.
+2. List the exact domains, one per line, and say what each is for.
+3. Ask for them to be added, then wait.
+
+Never infer that a portal blocks you when the sandbox might be what refused the
+connection — the two are indistinguishable from inside a failed request, and confusing
+them writes a false finding into a probe report. If a request fails on a host that isn't
+on the allowlist, the honest result is "not yet reachable from this sandbox," never "the
+portal denied us."
 
 ## Repo layout
 
@@ -210,7 +209,7 @@ data/            committed JSON + hashes.jsonl
 review/          local labelling UI (never deployed)
 site/            static frontend
 probe/           Stage 0 throwaway scripts
-docs/            portal-survey.md and other written findings
+docs/            per-city probe reports and written findings
 ```
 
 ## Stack
@@ -226,9 +225,9 @@ Astro/Vite + Leaflet. GitHub Actions cron. No paid services anywhere.
 - Any workaround for an access restriction — **restrictions are answers, not
   obstacles**
 - Reaching a domain that isn't on the sandbox allowlist — list what you need and wait
-- Changing the locked city or category after Stage 1, including because Stage 1.5
-  turned up a portal with better data
-- Writing an adapter for any city other than the Stage 1 city, before Stage 6
+- Changing the locked city or category after Stage 1
+- Starting a second city before the first one has actually shipped (Stage 7)
+- Editing anything in `pipeline/` to accommodate a specific city's portal
 
 ## Commit attribution
 
@@ -245,13 +244,13 @@ Commit with no AI co-author trailer at all.
 - Network is default-deny. Only an allowlist of domains is reachable from Bash
   commands. Currently allowed: the Stage 0 targets (`data.opencity.in`,
   `mcdonline.nic.in`, `bbmp.gov.in`), `archive.org`, package registries, and docs
-  sites. Any other city's portal — including everything Stage 1.5 surveys — is **not**
-  reachable until it is added.
+  sites. Any other city's portal is **not** reachable until it is added — expect this
+  to be the first blocker at Stage 7.
 - A blocked request and a portal refusing you are indistinguishable from inside the
   sandbox. Never report one as the other. If the host isn't on the allowlist above,
   the finding is "not yet reachable from this sandbox," and the fix is to ask for the
   domain, not to conclude anything about the portal. See *Expanding the network
-  allowlist* under Stage 1.5 for the procedure.
+  allowlist* for the procedure.
 - Per invariant 4, a genuine access restriction — a login wall, a 403 with the domain
   allowed — is an answer, not an obstacle. Report it and stop.
 - No Python venv is possible here (`ensurepip` is missing from the system Python).
