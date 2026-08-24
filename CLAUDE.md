@@ -78,6 +78,41 @@ visually obvious, high volume.
 Every other city waits. Not in parallel, not "while that's running" — the next city
 starts only once this one is shipped, at Stage 7.
 
+### Before locking: prove the source can actually produce check 1
+
+Check 1 (re-complaint rate) is the headline metric, and it needs two fields that are
+easy to assume and easy not to have:
+
+- **A resolution/closure timestamp.** "Re-filed within N days of being *marked
+  resolved*" is uncomputable without knowing when it was marked resolved. A single
+  filing date plus a current status snapshot is not enough — a snapshot tells you
+  where a ticket stands today, not when it moved.
+- **A location granularity finer than ward.** A BBMP ward holds tens of thousands of
+  people. "Same category + same ward within 30 days" fires for garbage in essentially
+  every ward, every month. That is a description of a city, not a signal about a
+  specific closed ticket.
+
+Stage 0 established that the published `bbmp-grievances-data` CSVs (~767k rows,
+2020–2025) have **neither**: `Grievance Date` is the only date, and `Ward Name` is the
+only location. So the open dataset alone cannot produce check 1 as specified.
+
+Before you lock scope, state in writing — in `docs/` — which reachable source supplies
+the closure date and the sub-ward location, or that none does.
+
+If none does, **do not quietly redefine the metric to fit the data and keep calling it
+the headline number.** That is the single most likely way this project ends up
+publishing something indefensible. The honest options are, in order of preference:
+
+1. Find a source that carries closure dates and finer location (a portal ticket view,
+   an API field, a per-ticket page).
+2. Redefine check 1 explicitly, write down precisely what the weaker version does and
+   does not support, and demote it from "headline" if it no longer carries that weight.
+3. Report that the data does not support the project's central metric. Per the Stage 0
+   spirit, that is a finding, not a failure — and it is worth more than a published
+   number nobody can defend.
+
+Whichever it is, the reasoning goes in `docs/` before Stage 2 begins.
+
 ## Stage 2 — Ingestion
 
 - Prefer JSON/API endpoint over browser automation. Only reach for Playwright if
