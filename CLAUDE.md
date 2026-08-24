@@ -75,6 +75,65 @@ surviving EXIF wins.
 destroy the brightness heuristic. Garbage and potholes are the target: daytime,
 visually obvious, high volume.
 
+## Stage 1.5 — Portal survey · reconnaissance only, strictly time-boxed
+
+Runs **after** scope lock, **before** Stage 2. Purpose: find out how much the portals
+differ *before* the adapter interface gets baked in, so Stage 6 forkability is a design
+we chose rather than a retrofit we regret. An interface derived from exactly one portal
+will fit exactly one portal.
+
+**This stage looks. It does not build.** You are still committed to the one city and one
+category locked in Stage 1 — this does not reopen that decision, and nothing surveyed
+here gets scraped, ingested, or turned into a working adapter now.
+
+Survey **2–3 other Indian municipal portals** (different cities, and ideally a different
+portal vendor — reusing the same vendor teaches you nothing about generalising). For
+each, record only what's visible from a handful of public page loads:
+
+- City, portal URL, and the vendor/software behind it if identifiable
+- Open311 or any sanctioned API? (probe the same discovery paths as Stage 0)
+- Is logged-out browsing of closed tickets possible at all?
+- Are resolution photos publicly fetchable without a session?
+- Does EXIF survive? (a couple of images is enough — don't bulk-pull)
+- The shape of the data: JSON endpoint, server-rendered HTML, or ASP.NET `__VIEWSTATE`
+- What a ticket URL looks like, and whether ward/zone/category are exposed as fields
+
+Write it to `docs/portal-survey.md` as a comparison table, then add a short section:
+**what varies across portals, and therefore what the `adapters/<city>.py` interface must
+abstract.** That conclusion is the actual deliverable — the table is just evidence.
+
+Constraints, all of them non-negotiable:
+
+- **Every hard invariant still applies in full.** Especially: 1 request per 3 seconds,
+  honest User-Agent, no login flows, no ID enumeration, and access restrictions are
+  answers rather than obstacles. A survey is not a licence to poke harder.
+- **Time-box: 2 hours.** If a portal is fighting you, record "could not determine
+  without authentication" and move on. An honest unknown in the table is worth more
+  than an hour of prodding.
+- **Do not write `adapters/` files for surveyed cities.** One adapter — the Stage 1
+  city — is all that exists until Stage 6.
+- **Do not expand scope.** If a surveyed portal looks like better data than the one you
+  locked, that is a note in `docs/portal-survey.md` and nothing more. Stop and ask
+  before acting on it.
+
+### Expanding the network allowlist
+
+The sandbox is default-deny and **you cannot widen it yourself** — settings files are
+write-protected inside the sandbox by design, so any attempt to edit them will fail.
+That is intentional, not a bug to work around.
+
+When you need domains this stage can't reach:
+
+1. Stop.
+2. List the exact domains, one per line, and say what each is for.
+3. Ask for them to be added, then wait.
+
+Never infer that a portal blocks you when the sandbox might be what refused the
+connection — those two look identical from inside a failed request, and confusing them
+puts a false finding into the survey. If a request fails on a host that isn't on the
+allowlist, the honest report is "not yet reachable from this sandbox," not "the portal
+denied us."
+
 ## Stage 2 — Ingestion
 
 - Prefer JSON/API endpoint over browser automation. Only reach for Playwright if
@@ -137,6 +196,11 @@ README good enough that a civic group in another city clones it, edits one adapt
 file, and runs. Adapters live in `adapters/<city>.py` behind a common interface so a
 new portal is one file, not a fork of the pipeline.
 
+The interface is validated against `docs/portal-survey.md` from Stage 1.5: every
+variation recorded there must be expressible through the adapter interface without
+touching `pipeline/`. If one isn't, the interface is wrong — fix it here, where it is
+still cheap, rather than discovering it when someone else's fork fails.
+
 ## Repo layout
 
 ```
@@ -146,6 +210,7 @@ data/            committed JSON + hashes.jsonl
 review/          local labelling UI (never deployed)
 site/            static frontend
 probe/           Stage 0 throwaway scripts
+docs/            portal-survey.md and other written findings
 ```
 
 ## Stack
@@ -160,6 +225,10 @@ Astro/Vite + Leaflet. GitHub Actions cron. No paid services anywhere.
 - Adding any dependency that costs money or requires an account
 - Any workaround for an access restriction — **restrictions are answers, not
   obstacles**
+- Reaching a domain that isn't on the sandbox allowlist — list what you need and wait
+- Changing the locked city or category after Stage 1, including because Stage 1.5
+  turned up a portal with better data
+- Writing an adapter for any city other than the Stage 1 city, before Stage 6
 
 ## Commit attribution
 
@@ -174,9 +243,17 @@ Commit with no AI co-author trailer at all.
   are confined to this project directory by the kernel, and reads outside it are
   blocked. This is enforced, not advisory.
 - Network is default-deny. Only an allowlist of domains is reachable from Bash
-  commands. If a host you need for Stage 0 is blocked, **say so and stop** — per
-  invariant 4, an access restriction is an answer, not an obstacle. Ask before any
-  allowlist change.
+  commands. Currently allowed: the Stage 0 targets (`data.opencity.in`,
+  `mcdonline.nic.in`, `bbmp.gov.in`), `archive.org`, package registries, and docs
+  sites. Any other city's portal — including everything Stage 1.5 surveys — is **not**
+  reachable until it is added.
+- A blocked request and a portal refusing you are indistinguishable from inside the
+  sandbox. Never report one as the other. If the host isn't on the allowlist above,
+  the finding is "not yet reachable from this sandbox," and the fix is to ask for the
+  domain, not to conclude anything about the portal. See *Expanding the network
+  allowlist* under Stage 1.5 for the procedure.
+- Per invariant 4, a genuine access restriction — a login wall, a 403 with the domain
+  allowed — is an answer, not an obstacle. Report it and stop.
 - No Python venv is possible here (`ensurepip` is missing from the system Python).
   Install project-local dependencies with
   `python3 -m pip install --target ./pylibs <pkg>` and run with
