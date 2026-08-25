@@ -1,9 +1,21 @@
 name: stage0-reachability
 
 # Stage 0 item 7: do municipal servers treat GitHub Actions datacenter IPs
-# differently from residential ones? One-shot probe; re-run manually via
-# workflow_dispatch. Same rate limit and User-Agent as everywhere else
-# (invariant 5). Read-only GETs to publicly browsable pages only.
+# differently from residential ones? One-shot probe; re-runs on every edit
+# to this file, or manually via workflow_dispatch. Same rate limit and
+# User-Agent as everywhere else (invariant 5). Read-only GETs to publicly
+# browsable endpoints only.
+#
+# Round 2 adds the three surfaces the Stage 1 sweep depends on beyond the
+# original four: the one-word staff-image host, the S3 citizen-image bucket,
+# and web.archive.org (the tamper-evidence path).
+#
+# Expected-result notes, so conclusions aren't drawn from bare codes alone:
+# - sahaaya2.bbmpgov.in serves a TLS chain that does not match its name
+#   (portal-side property, documented since the first probe); -k measures
+#   reachability, not certificate validity.
+# - a bare S3 bucket root normally answers 403 AccessDenied (listing is
+#   forbidden); any HTTP code there proves the route, DNS and TLS work.
 
 on:
   workflow_dispatch:
@@ -31,3 +43,21 @@ jobs:
               || echo "request failed"
             sleep 3  # invariant 5: 1 request / 3 s, hard
           done
+      - name: Probe image + archive hosts from an Actions runner (round 2)
+        run: |
+          set -u
+          UA='GhostFixes/0.0-stage0 (+https://github.com/Apoorvabatham/ghostfixes; contact: apba00001@uni-saarland.de)'
+          #          url                                          extra curl args
+          while IFS='|' read -r url extra; do
+            [ -n "$url" ] || continue
+            echo "== $url"
+            # shellcheck disable=SC2086
+            curl -sS -A "$UA" -o /dev/null -m 30 $extra \
+              -w 'status=%{http_code} time=%{time_total}s\n' "$url" \
+              || echo "request failed"
+            sleep 3  # invariant 5: 1 request / 3 s, hard
+          done <<'HOSTS'
+https://sahaaya2.bbmpgov.in/|-k
+https://nammabengaluru.s3.ap-south-1.amazonaws.com/|
+https://web.archive.org/|
+HOSTS
