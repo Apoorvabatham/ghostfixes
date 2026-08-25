@@ -78,6 +78,30 @@ class HashLogTests(unittest.TestCase):
         self.assertEqual(loaded["image_sha256"], rec["image_sha256"])
         os.remove(path)
 
+    def test_context_manager_closes_on_clean_exit(self):
+        fd, path = tempfile.mkstemp(suffix=".jsonl")
+        os.close(fd)
+        os.remove(path)
+        with HashLog(path) as log:
+            log.append(record_for(1, "https://example.invalid/a.jpg",
+                                  png_bytes()))
+        self.assertTrue(log._fh.closed)
+        os.remove(path)
+
+    def test_context_manager_closes_on_exception(self):
+        fd, path = tempfile.mkstemp(suffix=".jsonl")
+        os.close(fd)
+        os.remove(path)
+        with self.assertRaises(RuntimeError):
+            with HashLog(path) as log:
+                log.append(record_for(1, "https://example.invalid/b.jpg",
+                                      png_bytes()))
+                raise RuntimeError("boom mid-sweep")
+        self.assertTrue(log._fh.closed)
+        # Whatever was flushed before the blow-up stays replayable.
+        self.assertEqual(len(HashLog(path).existing_pairs()), 1)
+        os.remove(path)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -99,3 +99,12 @@ class HashLog:
 
     def close(self):
         self._fh.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        # Closing on the exception path too: a long sweep must never leak
+        # the handle when a ticket blows up mid-run.
+        self.close()
+        return False

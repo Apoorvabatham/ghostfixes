@@ -1,7 +1,7 @@
 # Secrets — never commit
 .env
 .github_token
-.claude/settings.local.json
+.claude/
 
 # Project-local Python deps (no venv possible; see CLAUDE.md)
 pylibs/
@@ -25,10 +25,19 @@ dist/
 *.tiff
 
 # Shell init files the sandbox synthesizes in its container home — these are
-# visible from inside the sandbox but are not part of the project.
+# visible from inside the sandbox but are not part of the project. Several
+# appear as bind-mounted character devices and must never be indexed.
 .bashrc
 .bash_profile
 .profile
+.zprofile
+.zshrc
+.gitconfig
+.ripgreprc
+.gitmodules
+.mcp.json
+.idea
+.vscode
 
 # Scratch / probe output — Stage 0 is throwaway and may hold raw scraped
 # records that have not been PII-stripped yet (invariant 1).
