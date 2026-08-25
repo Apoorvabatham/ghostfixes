@@ -1,0 +1,33 @@
+name: stage0-reachability
+
+# Stage 0 item 7: do municipal servers treat GitHub Actions datacenter IPs
+# differently from residential ones? One-shot probe; re-run manually via
+# workflow_dispatch. Same rate limit and User-Agent as everywhere else
+# (invariant 5). Read-only GETs to publicly browsable pages only.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/stage0-reachability.yml"]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe municipal endpoints from an Actions runner
+        run: |
+          set -u
+          UA='GhostFixes/0.0-stage0 (+https://github.com/Apoorvabatham/ghostfixes; contact: apba00001@uni-saarland.de)'
+          for url in \
+            'https://mcdonline.nic.in/' \
+            'https://bbmp.gov.in/' \
+            'https://sahaaya2.bbmp.gov.in/' \
+            'https://data.opencity.in/api/3/action/package_search?q=grievance&rows=1'
+          do
+            echo "== $url"
+            curl -sS -A "$UA" -o /dev/null -m 30 \
+              -w 'status=%{http_code} time=%{time_total}s\n' "$url" \
+              || echo "request failed"
+            sleep 3  # invariant 5: 1 request / 3 s, hard
+          done
