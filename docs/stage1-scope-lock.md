@@ -157,8 +157,10 @@ limiter, not optimism, sets the floor.
   property, not a workaround of an access restriction).
 - **Citizen images:** S3 originals fetched keyless where offered; observed
   403s and literal-`null` paths are recorded as-is, not retried into existence.
-- **Archive:** every ticket's detail URL is submitted to archive.org at capture
-  time; published links point at archived snapshots, never live pages.
+- **Archive:** ~~every ticket's detail URL is submitted to archive.org at
+  capture time; published links point at archived snapshots, never live
+  pages~~ — VOIDED by Amendment B (2026-08-25): no per-ticket or image-URL
+  archiving ever; hashes.jsonl + re-fetch instructions carry verification.
 - Derived record per ticket (the allowed universe): ticket ID, ward, category,
   sub-category, API filing timestamp, status fields, image SHA-256 + pHash +
   brightness mean/stddev + Laplacian variance, filename-decoded resolution
