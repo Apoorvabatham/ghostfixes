@@ -210,6 +210,21 @@ becomes reachable and exposes a public tracker with closure history.
 
 ---
 
+## 7. Addendum — citizen-photo EXIF measured (2026-08-25 late)
+
+The S3 image host was allowlisted and the last open question measured;
+field-level results in `docs/citizen-exif-probe-2026-08-25.md`. One-line
+result: S3-era citizen originals keep capture-time (8/10) and device (6/10)
+EXIF, but GPS survives only ~9% overall (2/22, leak-shaped) — so it is **not**
+a systematic sub-ward locator. Closure-moment half of check 1 stands (§4b;
+staff blocks 41/45, staff photos still fully EXIF-free); the location half
+remains unsupplied by any systematic source. Option 2 vs 3 remains open per
+maintainer instruction. New publisher-side fact: the open CSV's filing minute
+is shifted exactly 12 h on 12/45 sampled rows (AM/PM export artifact) —
+material to any dataset-anchored TTC arithmetic.
+
+---
+
 # Original memo (pre-rerun, retained for record)
 
 **Status then: OPEN — one candidate source requested, not yet reachable.**
