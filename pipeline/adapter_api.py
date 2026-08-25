@@ -47,7 +47,7 @@ class ImageFetch:
 class CityAdapter(ABC):
     """One municipal portal. Normative prose: docs/adapter-interface.md."""
 
-    name: str                  # short slug, e.g. 'bengaluru'
+    name: str                  # short slug for the city, e.g. 'city1'
     selection: SelectionRule   # which category and window this run audits
 
     @abstractmethod
