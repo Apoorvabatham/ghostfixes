@@ -66,10 +66,10 @@ class SweepJournal:
                 try:
                     rec = json.loads(line)
                 except json.JSONDecodeError as exc:
-                    # A torn final line after a hard kill is corruption we
+                    # A torn final line after a hard kill is damage we
                     # surface, not skip: fail loudly.
-                    raise ValueError(f"{self.path}:{lineno}: corrupt journal "
-                                     "line — fail loudly, do not skip") from exc
+                    raise ValueError(f"{self.path}:{lineno}: unparsable journal "
+                                     "line — unparsable; fail loudly, do not skip") from exc
                 target[rec["ticket_id"]] = rec
 
     def append(self, ticket_id, state, **detail):

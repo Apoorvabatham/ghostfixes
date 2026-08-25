@@ -63,10 +63,10 @@ class JournalTests(unittest.TestCase):
         with self.assertRaises(TransitionError):
             j.append("t1", "api_dropped")
 
-    def test_corrupt_line_raises_valueerror_loudly(self):
+    def test_unparsable_line_raises_valueerror_loudly(self):
         with open(self.path, "w", encoding="utf-8") as fh:
             fh.write('{"ticket_id": "t1", "state": "api_kept"}\n')
-            fh.write("{corrupt json\n")
+            fh.write("{unparsable json\n")
         with self.assertRaises(ValueError):
             SweepJournal(self.path).counts()
 

@@ -5,7 +5,7 @@ import unittest
 from pipeline.limiter import GlobalLimiter
 
 
-class FakeClock:
+class ManualClock:
     def __init__(self, start=100.0):
         self.now = start
         self.sleeps = []
@@ -20,14 +20,14 @@ class FakeClock:
 
 class StartRateTests(unittest.TestCase):
     def test_first_request_sleeps_not_at_all(self):
-        fc = FakeClock()
+        fc = ManualClock()
         lim = GlobalLimiter(clock=fc.clock, sleep=fc.sleep)
         with lim.request():
             pass
         self.assertEqual(fc.sleeps, [])
 
     def test_immediate_second_request_waits_full_interval(self):
-        fc = FakeClock()
+        fc = ManualClock()
         lim = GlobalLimiter(clock=fc.clock, sleep=fc.sleep)
         with lim.request():
             pass
@@ -36,7 +36,7 @@ class StartRateTests(unittest.TestCase):
         self.assertEqual(fc.sleeps, [3.0])
 
     def test_burst_of_three_from_t0(self):
-        fc = FakeClock()
+        fc = ManualClock()
         lim = GlobalLimiter(clock=fc.clock, sleep=fc.sleep)
         for _ in range(3):
             with lim.request():
