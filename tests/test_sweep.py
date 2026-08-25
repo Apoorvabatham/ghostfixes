@@ -12,7 +12,8 @@ from pipeline.limiter import GlobalLimiter
 from pipeline.manifest import build_candidates
 from pipeline.selection import SelectionRule
 from pipeline.adapter_api import CsvRow, ImageFetch, TicketDetail
-from pipeline.sweep import SurfaceDegraded, SurfaceGuard, SweepRunner
+from pipeline.sweep import (BatchHealthGuard, MassDropDegraded,
+                            SurfaceDegraded, SurfaceGuard, SweepRunner)
 
 CAT = "Example Category"
 RULE = SelectionRule(CAT, ("2025-01", "2025-02"), "2025-01-01T00:00:00",
@@ -216,6 +217,118 @@ class ObjectFailureTests(Harness):
         runner.run()
         # 5 detail calls + 4 image calls (one ticket dropped has no images).
         self.assertEqual(runner.client.requests_made, 9)
+
+
+class GuardTests(Harness):
+    """BatchHealthGuard: structural mass-drop detection (the F1 hole — a
+    200 with an unusable payload reads as success to SurfaceGuard)."""
+
+    def run_with(self, handler, **kwargs):
+        seen = []
+        clock = ManualClock()
+        client = PortalClient(
+            "GhostFixes/test",
+            limiter=GlobalLimiter(clock=clock.clock, sleep=clock.sleep),
+            transport=httpx.MockTransport(handler))
+        health = kwargs.pop("health", None)
+        runner = SweepRunner(StubAdapter(), client,
+                             SweepJournal(self.jpath), HashLog(self.hpath),
+                             self.manifest, health=health)
+        self._closables.append(runner.journal)
+        self._closables.append(runner.hashlog)
+        self._closables.append(client)
+        self.runner = runner
+        return runner.run(**kwargs)
+
+    def detail_handler(self, payload_for):
+        body = png_bytes()
+
+        def handler(request):
+            url = str(request.url)
+            if "portal.test/detail" in url:
+                tid = int(url.rsplit("/", 1)[1])
+                return httpx.Response(200, json=payload_for(tid))
+            if "images.test" in url:
+                return httpx.Response(200, content=body)
+            return httpx.Response(404)
+        return handler
+
+    def test_unparseable_batch_halts_and_requeues(self):
+        # The F1 signature exactly: 200 + valid JSON, but the consumed
+        # fields read from the wrong level, so no filing timestamp exists.
+        def payload_for(tid):
+            return {"Id": str(tid), "Status": "Closed"}
+        health = BatchHealthGuard(RULE, batch_size=5)
+        with self.assertRaises(MassDropDegraded) as ctx:
+            self.run_with(self.detail_handler(payload_for), health=health)
+        suspects = set(ctx.exception.suspect_ticket_ids)
+        self.assertEqual(len(suspects), 5)
+        states = {t: r["state"] for t, r in
+                  self.runner.journal.state_map().items()}
+        for tid in suspects:
+            # Requeued, not terminally dropped: resume must re-decide them.
+            self.assertEqual(states[tid], "failed")
+
+    def test_parseable_mass_drop_below_keep_floor_halts_and_requeues(self):
+        # Parseable dates outside the window, CSV dates on no pad day:
+        # legitimate-looking drops at a structurally impossible rate.
+        def payload_for(tid):
+            return {"Id": str(tid), "Filed": "2024-06-01T00:00:00",
+                    "Status": "Closed", "Images": []}
+        health = BatchHealthGuard(RULE, batch_size=5)
+        with self.assertRaises(MassDropDegraded) as ctx:
+            self.run_with(self.detail_handler(payload_for), health=health)
+        suspects = set(ctx.exception.suspect_ticket_ids)
+        self.assertEqual(len(suspects), 5)
+        states = {t: r["state"] for t, r in
+                  self.runner.journal.state_map().items()}
+        for tid in suspects:
+            self.assertEqual(states[tid], "failed")
+
+    def test_all_pad_batch_never_fires(self):
+        # Every drop is a declared pad-day candidate carrying a parseable
+        # API date: expected membership facts, not a health signal.
+        pad_rule = SelectionRule(
+            CAT, ("2024-12", "2025-01"), "2025-01-01T00:00:00",
+            "2025-03-01T00:00:00", pad_day_prefixes=("2024-12",))
+        stub = StubAdapter()
+        stub.selection = pad_rule
+        stub.parse_csv_row = lambda r: CsvRow(
+            r["Complaint ID"], r["Category"], r["Grievance Date"])
+        rows = [{"Complaint ID": str(t), "Category": CAT,
+                 "Grievance Date": "2024-12-05 09:00"}
+                for t in range(200, 205)]
+        cands, _ = build_candidates(stub, [("2024", rows)])
+        clock = ManualClock()
+        client = PortalClient(
+            "GhostFixes/test",
+            limiter=GlobalLimiter(clock=clock.clock, sleep=clock.sleep),
+            transport=httpx.MockTransport(self.detail_handler(
+                lambda tid: {"Id": str(tid),
+                             "Filed": "2024-12-05T08:00:00"})))
+        runner = SweepRunner(stub, client, SweepJournal(self.jpath),
+                             HashLog(self.hpath), cands)
+        self._closables.append(runner.journal)
+        self._closables.append(runner.hashlog)
+        self._closables.append(client)
+        stats = runner.run()
+        self.assertEqual(stats["api_dropped"], 5)
+        self.assertEqual(stats["scrape_done"], 0)
+
+    def test_healthy_batch_completes_and_finalizes(self):
+        stats = self.run_with(self.detail_handler(payloads_for))
+        self.assertEqual(stats["scrape_done"], 4)
+        self.assertEqual(stats["api_dropped"], 1)
+
+    def test_limit_stop_does_not_evaluate_partial_batch(self):
+        # Below batch_size and not exhaustion: a limit stop is crash-shaped,
+        # and no evaluation may synthesize itself from a partial series.
+        def payload_for(tid):
+            return {"Id": str(tid), "Filed": "2024-06-01T00:00:00"}
+        stats = self.run_with(
+            self.detail_handler(payload_for),
+            health=BatchHealthGuard(RULE, batch_size=10), limit=2)
+        self.assertEqual(stats["candidates"], 2)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,28 @@ class ConstructorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             SelectionRule(CATEGORY, PREFIXES, END, START)
 
+    def test_pad_prefixes_must_be_subset_of_stage_a_prefixes(self):
+        with self.assertRaises(ValueError):
+            SelectionRule(CATEGORY, PREFIXES, START, END,
+                          pad_day_prefixes=("2023-12-31",))
+
+
+class PadDayTests(unittest.TestCase):
+    """csv_date_is_pad: the form the mass-drop guard consumes. The adapter
+    declares which prefixes pad; mechanism only classifies."""
+
+    def test_declared_pad_days_match_by_prefix(self):
+        padded = SelectionRule(CATEGORY, PREFIXES, START, END,
+                               pad_day_prefixes=("2024-12-31", "2025-04-01"))
+        self.assertTrue(padded.csv_date_is_pad("2024-12-31 18:00"))
+        self.assertTrue(padded.csv_date_is_pad("2025-04-01 09:15"))
+        self.assertFalse(padded.csv_date_is_pad("2025-02-05 10:30"))
+        self.assertFalse(padded.csv_date_is_pad(""))
+        self.assertFalse(padded.csv_date_is_pad(None))
+
+    def test_default_declares_no_pad_days(self):
+        self.assertFalse(rule().csv_date_is_pad("2024-12-31 18:00"))
+
 
 class StageATests(unittest.TestCase):
     def test_exact_category_inside_window(self):

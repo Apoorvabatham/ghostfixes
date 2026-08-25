@@ -30,6 +30,10 @@ CSV_DATE_PREFIXES = (
     "2025-03",
     "2025-04-01",  # pad above window
 )
+# Declared to the selection mechanism so the Stage-B mass-drop guard can
+# exclude pad-day candidates from its keep-floor denominator: their drops
+# are expected membership facts, not health signals.
+PAD_DAY_PREFIXES = ("2024-12-31", "2025-04-01")
 WINDOW_START = "2025-01-01T00:00:00"
 WINDOW_END_EXCLUSIVE = "2025-04-01T00:00:00"
 
@@ -118,7 +122,7 @@ def _text(value):
 class BengaluruAdapter(CityAdapter):
     name = "bengaluru"
     selection = SelectionRule(CATEGORY, CSV_DATE_PREFIXES, WINDOW_START,
-                              WINDOW_END_EXCLUSIVE)
+                              WINDOW_END_EXCLUSIVE, PAD_DAY_PREFIXES)
 
     def detail_url(self, ticket_id: str) -> str:
         return DETAIL_URL_TEMPLATE.format(ticket_id=ticket_id)

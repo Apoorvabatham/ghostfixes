@@ -47,7 +47,7 @@ class SelectionRule:
     """
 
     def __init__(self, category, csv_date_prefixes, window_start,
-                 window_end_exclusive):
+                 window_end_exclusive, pad_day_prefixes=()):
         if not isinstance(category, str) or not category:
             raise ValueError("category must be a non-empty string")
         if not csv_date_prefixes or not all(
@@ -59,10 +59,28 @@ class SelectionRule:
             raise ValueError("window bounds must be canonical datetimes")
         if not start < end:
             raise ValueError("window_end_exclusive must be after window_start")
+        pads = tuple(pad_day_prefixes)
+        for prefix in pads:
+            if prefix not in self._as_tuple(csv_date_prefixes):
+                raise ValueError(
+                    "pad_day_prefixes must be a subset of csv_date_prefixes")
         self.category = category
         self.csv_date_prefixes = tuple(csv_date_prefixes)
+        self.pad_day_prefixes = pads
         self.window_start = start
         self.window_end_exclusive = end
+
+    @staticmethod
+    def _as_tuple(prefixes):
+        return prefixes if isinstance(prefixes, tuple) else tuple(prefixes)
+
+    def csv_date_is_pad(self, csv_grievance_date):
+        """True when the published CSV date falls on a declared padding day —
+        a row admitted only to absorb the publisher's export clock artifact,
+        never part of the analysis window proper. The mechanism holds the
+        form (padding exists, is declared, stays a subset of Stage-A
+        prefixes); the adapter declares which prefixes pad."""
+        return (csv_grievance_date or "").startswith(self.pad_day_prefixes)
 
     def is_stage_a_candidate(self, category, csv_grievance_date):
         """Return (is_candidate, note) for one published CSV row.
