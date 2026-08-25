@@ -6,9 +6,10 @@ name: stage0-reachability
 # User-Agent as everywhere else (invariant 5). Read-only GETs to publicly
 # browsable endpoints only.
 #
-# Round 2 adds the three surfaces the Stage 1 sweep depends on beyond the
-# original four: the one-word staff-image host, the S3 citizen-image bucket,
-# and web.archive.org (the tamper-evidence path).
+# Results are SELF-PUBLISHED: the runner appends its table to
+# docs/actions-reachability.md and pushes. The repository is private, so the
+# Actions API is not readable from the dev sandbox; results arrive via
+# git pull. This pattern is mandatory for all future CI output.
 #
 # Expected-result notes, so conclusions aren't drawn from bare codes alone:
 # - sahaaya2.bbmpgov.in serves a TLS chain that does not match its name
@@ -16,6 +17,12 @@ name: stage0-reachability
 #   reachability, not certificate validity.
 # - a bare S3 bucket root normally answers 403 AccessDenied (listing is
 #   forbidden); any HTTP code there proves the route, DNS and TLS work.
+#
+# Implementation note: NO heredocs anywhere in these run scripts. A heredoc
+# terminator at column 0 ends the YAML block scalar itself, which killed run
+# 32796402468 at startup with zero jobs. Host lists are multi-line shell
+# variables instead: YAML strips the block's common indent, bash sees the
+# URLs verbatim, and there is no terminator to misplace.
 
 on:
   workflow_dispatch:
@@ -26,38 +33,50 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Probe municipal endpoints from an Actions runner
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Probe all hosts and self-publish results
         run: |
-          set -u
-          UA='GhostFixes/0.0-stage0 (+https://github.com/Apoorvabatham/ghostfixes; contact: apba00001@uni-saarland.de)'
-          for url in \
-            'https://mcdonline.nic.in/' \
-            'https://bbmp.gov.in/' \
-            'https://sahaaya2.bbmp.gov.in/' \
-            'https://data.opencity.in/api/3/action/package_search?q=grievance&rows=1'
-          do
-            echo "== $url"
-            curl -sS -A "$UA" -o /dev/null -m 30 \
-              -w 'status=%{http_code} time=%{time_total}s\n' "$url" \
-              || echo "request failed"
-            sleep 3  # invariant 5: 1 request / 3 s, hard
-          done
-      - name: Probe image + archive hosts from an Actions runner (round 2)
-        run: |
-          set -u
+          set -eu
           UA='GhostFixes/0.0-stage0 (+https://github.com/Apoorvabatham/ghostfixes; contact: apba00001@uni-saarland.de)'
           #          url                                          extra curl args
-          while IFS='|' read -r url extra; do
+          hosts='https://mcdonline.nic.in/|
+          https://bbmp.gov.in/|
+          https://sahaaya2.bbmp.gov.in/|
+          https://data.opencity.in/api/3/action/package_search?q=grievance&rows=1|
+          https://sahaaya2.bbmpgov.in/|-k
+          https://nammabengaluru.s3.ap-south-1.amazonaws.com/|
+          https://web.archive.org/|'
+          rows=probe_rows.txt
+          : > "$rows"
+          printf '%s\n' "$hosts" | while IFS='|' read -r url extra; do
             [ -n "$url" ] || continue
             echo "== $url"
             # shellcheck disable=SC2086
-            curl -sS -A "$UA" -o /dev/null -m 30 $extra \
-              -w 'status=%{http_code} time=%{time_total}s\n' "$url" \
-              || echo "request failed"
+            out=$(curl -sS -A "$UA" -o /dev/null -m 30 $extra \
+              -w '%{http_code}|%{time_total}' "$url" 2>/dev/null) || out='000|0'
+            printf '| `%s` | %s | %s |\n' "$url" "${out%%|*}" "${out#*|}" >> "$rows"
             sleep 3  # invariant 5: 1 request / 3 s, hard
-          done <<'HOSTS'
-https://sahaaya2.bbmpgov.in/|-k
-https://nammabengaluru.s3.ap-south-1.amazonaws.com/|
-https://web.archive.org/|
-HOSTS
+          done
+          {
+            printf '\n## Run %s — %s UTC (Actions runner)\n\n' "$GITHUB_RUN_ID" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            printf 'Method: unauthenticated GETs, project User-Agent, `-m 30`, 3 s spacing.\n\n'
+            printf '| Host | HTTP | Time (s) |\n'
+            printf '|---|---|---|\n'
+            cat "$rows"
+          } >> docs/actions-reachability.md
+          rm -f "$rows"
+          git config user.name 'ghostfixes-ci'
+          git config user.email 'apba00001@uni-saarland.de'
+          git add docs/actions-reachability.md
+          if ! git commit -m "ci: reachability probe results (run ${GITHUB_RUN_ID})"; then
+            echo "no results committed (nothing changed or commit failed)"
+            exit 0
+          fi
+          git pull --rebase -q origin main || true
+          git push -q origin HEAD:main \
+            || { sleep 5; git pull --rebase -q origin main || true; git push -q origin HEAD:main; }
