@@ -54,6 +54,8 @@ class SweepRunner:
         self.guard = guard or SurfaceGuard()
         # Exact-once image work across restarts.
         self._hashed = hashlog.existing_pairs()
+        self._csv_dates = {rec["ticket_id"]: rec.get("csv_date_raw")
+                           for rec in manifest}
         self.image_totals = {"images_hashed": 0, "images_failed_object": 0}
 
     def run(self, limit=None):
@@ -129,10 +131,7 @@ class SweepRunner:
         return "scrape_done"
 
     def _csv_date(self, tid):
-        for rec in self.manifest:
-            if rec["ticket_id"] == tid:
-                return rec.get("csv_date_raw")
-        return None
+        return self._csv_dates.get(str(tid))
 
     def _scrape_stage(self, tid):
         rec = self.journal.state_map()[str(tid)]
@@ -151,7 +150,13 @@ class SweepRunner:
             if not content:
                 failed_objects += 1
                 continue
-            record = record_for(tid, url, content)
+            # A 200 whose bytes will not decode or hash is an object-level
+            # fact like a 403 (§10): counted, never trusted, not a halt.
+            try:
+                record = record_for(tid, url, content)
+            except (OSError, ValueError):
+                failed_objects += 1
+                continue
             self.hashlog.append(record)
             self._hashed.add((str(tid), url))
         hashed = sum(1 for u in urls if (str(tid), u) in self._hashed)
