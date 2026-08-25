@@ -238,3 +238,44 @@ Aggregates: `probe/out/sizing/volumes.json` (gitignored).
   - 2024-Q4 (n=17,981): Closed 17,613 · Non Relevant 256 · ReOpen 112
   - **2025-Q1 (n=16,747): Closed 16,344 · Non Relevant 288 · ReOpen 114 · In Progress 1**
   - 2025 Apr 1–Jun 19 (n=21,404): Closed 19,613 · Registered 1,227 · Non Relevant 265 · ReOpen 200 · In Progress 86 · null 13
+
+---
+
+# Amendment A — 2026-08-25: measured archival cost forces a two-phase sweep
+
+Per the header's amendment rule, this correction is committed before any sweep
+run touches the locked corpus. It changes §6's planning figures and §7's
+archive bullet; nothing else in the lock moves.
+
+**Measured** (`docs/stage0-report.md`, Addendum 2): anonymous Save Page Now
+blocks ~78 s per URL until capture completes; CDX spot-checks cost ~27 s; the
+canonical snapshot link resolves <1 s. Keyless archiving works — no account,
+which the no-accounts constraint requires.
+
+**Consequence:** serializing saves into the scrape loop makes archiving the
+dominant wall-clock term (~16,747 × ~81 s ≈ 16 days) and invalidates §6's
+"~4 calendar days" as a whole-sweep figure. The sweep therefore runs in two
+phases:
+
+- **Phase 1 — scrape:** detail calls + image fetches + hashing + `hashes.jsonl`
+  audit trail, exactly the §6 arithmetic (~75,400 requests ≈ 63 h limiter floor
+  ≈ 4–5 days realistic). No archive.org time inside this phase.
+- **Phase 2 — archive:** one save per ticket URL against the Phase 1 manifest,
+  checkpointed and resumable like everything else.
+
+**Limiter interpretation for Phase 2, stated explicitly because invariant 5 is
+hard:** request *starts* remain globally ≤1 per 3 s across all hosts; long
+server-side capture waits may overlap, with at most **4 saves in flight** and
+any throttling signal honoured immediately. Under that rule Phase 2's floor is
+the start-rate itself (16,747 × 3 s ≈ 14 h of start slots) plus capture-latency
+tail — planned **1–2 days**, bringing the whole-sweep plan to roughly a week.
+The stricter alternative reading (fully serial ⇒ ~16 days) is recorded here so
+this choice is visible and reversible by a future amendment.
+
+**Also amended:** published proof links take the canonical form
+`https://web.archive.org/web/<timestamp>/<original-url>`; CDX lookups are
+sampled spot-checks, never a per-ticket step. And the permanence flag from the
+Stage 0 report applies here too: archived snapshots are BBMP's keyless JSON and
+irreversibly public — **maintainer sign-off is requested before Phase 2 begins**
+(the mechanism is validated on one sample URL already; no further URLs are
+archived until then).

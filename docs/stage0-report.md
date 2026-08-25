@@ -218,3 +218,79 @@ allowlist procedure instead of concluded about.
 2. Workflow-file push still awaits PAT `workflow` scope.
 3. `api.bbmpgov.in` gateway failure is portal-side; nothing further actionable
    from here unless it starts answering.
+
+---
+
+# Addendum 2 — 2026-08-25 (later): Actions-runner reachability measured; keyless archiving validated
+
+## Item 7, round 1 — run 32795730414 (workflow pushed by maintainer as 9a14d81)
+
+Results reported by the maintainer from the Actions run (the repository is
+private, so runs are not readable from this sandbox — recorded as an access
+fact, not worked around):
+
+| Host | Local sandbox | Actions runner |
+|---|---|---|
+| `sahaaya2.bbmp.gov.in` | 200 | **200** |
+| `data.opencity.in` | 200 | **200** |
+| `mcdonline.nic.in` | 200 | **200** (9.7 s — slow but answering) |
+| `bbmp.gov.in` | 200 | **000 — connection failed** |
+
+**Conclusion:** both hosts the Stage 1 sweep depends on answer from Actions
+runners, so the free-runner execution plan is viable and checkpoint/resume is
+worth building. The `bbmp.gov.in` flip (works locally, fails from the runner)
+is the cautionary case: **these hosts treat datacenter IPs differently, and no
+200 generalizes from one network to the other.** Every future reachability
+claim must state which vantage point it was measured from.
+
+### Item 7, round 2 — extended probe pushed (28ff0a6), results pending
+
+The workflow now additionally probes, same method (project UA, `-m 30`,
+3-second spacing): `sahaaya2.bbmpgov.in` (one-word staff-image variant;
+`-k` because its mismatched TLS chain is a documented portal-side property),
+`nammabengaluru.s3.ap-south-1.amazonaws.com` (bare bucket root; 403
+AccessDenied on listing is expected and proves the route), and
+`web.archive.org`. Runner output pending maintainer paste; this subsection
+will be completed with those codes verbatim.
+
+## Archiving mechanism — both Stage 2 archive decisions validated keyless
+
+Measured against one sample ticket detail URL (`ComaplaintID=20446742`, taken
+verbatim from BBMP's own published dataset, consistent with prior probes):
+
+- **Decision (a), submit at capture time: WORKS WITHOUT AN ACCOUNT.**
+  Anonymous Save Page Now (`GET web.archive.org/save/<url>`) returned
+  **HTTP 200 in 77.7 s**, blocking until capture completed. This matters
+  doubly: an account-based SPN2 token would violate the no-accounts
+  constraint, so the keyless path is the only sanctioned one — and it exists.
+- **Decision (b), link snapshots not live pages: VERIFIED.** CDX lists the
+  fresh capture (`20260825011108`, origin statuscode 200, digest
+  `4O2FA6SVREKHAQMZU4CKHAIKO7DFMXSU`); the canonical
+  `web.archive.org/web/<timestamp>/<url>` form resolves HTTP 200 (<1 s).
+  CDX mimetype is listed as `application/xml` for the JSON body — recorded as
+  observed, uninterpreted; digest comparison remains available if ever needed.
+- CDX verification query: 27.2 s. Treat as sampled spot-check material, not a
+  per-ticket step.
+- **Budget impact (material):** a blocking save costs ~78 s wall clock per
+  ticket. Serialized into the scrape loop this dominates everything else
+  (~16,747 tickets × ~81 s ≈ 16 days). Consequence recorded as **Amendment A**
+  in `docs/stage1-scope-lock.md`: two-phase sweep — fast scrape phase first,
+  archiving as a separate resumable phase with staggered starts.
+- **Permanence note (flagged for maintainer sign-off before sweep-scale
+  use):** the archived artifact is BBMP's own keyless JSON and contains
+  whatever BBMP publishes there (address, staff name fields) — fields this
+  project never stores or displays. Archiving makes them permanent and public
+  elsewhere even if BBMP deletes them. That durability is the tamper-evidence
+  rationale, but it is irreversible; sign-off requested before Phase 2 runs at
+  scale. One URL is already archived as the mechanism validation above.
+
+## Blocker list, updated
+
+1. ~~Push token lacks GitHub `workflow` scope~~ **resolved** — workflow pushes
+   now accepted (28ff0a6).
+2. ~~Actions reachability unknown~~ **answered for round 1** (table above);
+   round-2 codes pending paste.
+3. `api.bbmpgov.in` gateway failure: unchanged, portal-side, not actionable
+   from here.
+4. Repository privacy means run logs are unreadable from this sandbox; probe
+   outputs arrive via maintainer paste. Accepted mode of operation.
