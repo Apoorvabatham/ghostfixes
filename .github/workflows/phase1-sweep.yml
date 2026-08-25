@@ -1,0 +1,71 @@
+name: phase1-sweep
+
+# Phase 1 production batches over the locked corpus (scope-lock §6, as
+# amended). One checkpointed batch per run under the Actions 6 h cap; the
+# journal on disk makes every batch exact-once resumable.
+#
+# Rate limit and User-Agent are enforced in-process by pipeline/limiter.py
+# and probe/phase1_dryrun.py (invariant 5) — one request started at most
+# every 3 s across all hosts, honest identifying UA with contact email.
+#
+# Results SELF-PUBLISH like every other CI output: the runner commits
+# data/manifest.jsonl, data/journal.jsonl and data/hashes.jsonl back to
+# main. hashes.jsonl is the public tamper-evidence spine (Amendment B
+# rule 4): SHA-256 of image bytes only — no image files, ever (invariant 6).
+#
+# NO heredocs in any run block (see stage0-reachability.yml header for why).
+#
+# Concurrency guard: two batches hitting the portal concurrently would each
+# keep their own limiter and double the global request rate, so overlapping
+# runs queue behind one another instead.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_requests:
+        description: 'Request budget for this batch (~1200 req/h at the hard limit)'
+        default: '6500'
+  push:
+    branches: [main]
+    paths: ['.github/workflows/phase1-sweep.yml']
+
+concurrency:
+  group: phase1-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install project dependencies
+        run: python3 -m pip install --target ./pylibs httpx pillow imagehash
+
+      - name: Run one checkpointed batch
+        run: |
+          PYTHONPATH="$PWD/pylibs:$PWD" python3 probe/phase1_dryrun.py \
+            --data-dir data \
+            --limit 999999 \
+            --max-requests "${{ github.event.inputs.max_requests || '6500' }}"
+
+      - name: Show batch tail
+        if: always()
+        run: tail -25 probe/out/sweep_ci.log 2>/dev/null || true
+
+      - name: Commit checkpoint
+        run: |
+          git config user.name "ghostfixes-runner"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/
+          git diff --cached --quiet || git commit -m "Phase 1 checkpoint: batch complete"
+          git push
