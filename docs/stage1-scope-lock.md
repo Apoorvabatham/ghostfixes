@@ -327,6 +327,24 @@ route; it stands recorded as irreversible rather than hidden.
 
 ## Appendix — source-CSV archival record (Amendment B rule 3)
 
-To be executed against the six published CKAN resource URLs, keyless Save
-Page Now, project User-Agent, ≥3 s between request starts; table filled on
-completion in this file.
+Executed 2026-08-25 against the six published CKAN resource URLs, keyless
+Save Page Now (`GET web.archive.org/save/<url>`), project User-Agent,
+≥3 s between request starts. Measured behaviour differs from the small JSON
+page validated in Stage 0: for multi-megabyte CSVs the save endpoint answers
+**HTTP 302** in seconds (the capture job is queued, not blocked-on), and the
+capture completes server-side moments later. Confirmation is per-resource
+via CDX, plus one replay check:
+
+| resource | save HTTP | save seconds | CDX timestamp | CDX status |
+|---|---|---|---|---|
+| BBMP Grievances 2020 | 302 | 13.3 | 20260825125117 | 200 |
+| BBMP Grievances 2021 | 302 | 6.7 | 20260825125150 | 200 |
+| BBMP Grievances 2022 | 302 | 6.7 | 20260825125213 | 200 |
+| BBMP Grievances 2023 | 302 | 6.6 | 20260825125321 | 200 (confirmed on re-query) |
+| BBMP Grievances 2024 | 302 | 6.7 | 20260825125357 | 200 |
+| BBMP Grievances 2025 | 302 | 36.8 | 20260825125445 | 200 |
+
+All six CDX entries carry mimetype `text/csv`. Replay spot-check on the 2025
+snapshot (canonical form `web.archive.org/web/20260825125445/<url>`):
+HTTP 200, `text/csv`, 18,272,067 bytes. The ID corpus for the locked window
+is thereby pinned at a known date under Amendment B's rules.
