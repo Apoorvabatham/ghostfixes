@@ -121,19 +121,35 @@ re-open happened and does **not** resurrect check 1; retired means retired
 
 ## 6. Request budget at the hard 1 req / 3 s limit
 
-Expected requests per ticket: detail call 1.00 + staff image ~0.85 (measured
-populated 17/20, staff block 41/45) + citizen image ~0.40 (ImagePath 8/20) +
-archive.org submission ~1.0 + status polls ~0.25 ≈ **3.5**, planned at
-**4.5** with retry headroom.
+Two populations, amended 2026-08-25 after the Phase 1 dry-run manifest build
+measured them:
+
+- **Candidates** — the Stage A padded superset: **17,137** tickets, each
+  incurring exactly one detail call. The unpadded Q1 core is 16,747
+  (Jan 4,345 + Feb 5,728 + Mar 6,674); the +390 is exactly the two pad days
+  (2024-12-31: 142; 2025-04-01: 248). No whitespace normalisation fired;
+  every candidate is category-exact.
+- **Kept** — Stage B members, decided on the live API timestamp alone:
+  planned ≈ **16,747** as pad-day tickets fail membership and converge the
+  set back toward the unpadded quarter. Image work attaches to this set
+  only. (Amendment B removed archiving entirely; statuses arrive on the
+  detail payload itself, so no separate status-poll request exists.)
+
+Expected requests per kept ticket: staff image ~0.85 (measured populated
+17/20, staff block 41/45) + citizen image ~0.40 (ImagePath 8/20) ≈
+**1.25**, plus the one detail call every candidate pays. Planned at
+**4.5** per candidate with retry headroom in the worst case.
 
 | Quantity | Value |
 |---|---|
-| Tickets | 16,747 |
-| Planned request ceiling | 16,747 × 4.5 ≈ **75,400** |
-| Pure limiter floor (× 3 s) | ≈ 63 h |
+| Candidates (Stage A, detail calls) | 17,137 |
+| Kept (Stage B, image work attaches here) | ≈ 16,747 |
+| Expected requests | 17,137 + 16,747 × 1.25 ≈ **38,100** |
+| Planned request ceiling | 17,137 × 4.5 ≈ **77,100** |
+| Pure limiter floor (× 3 s) | ≈ 32 h expected · ≈ 64 h worst-case ceiling |
 | Theoretical max at 100% utilisation | 28,800 req/day ⇒ ~6,400 tickets/day |
 | Planning figure at realistic duty cycle | ~4,500 tickets/day ⇒ **~4 calendar days** |
-| Under GitHub Actions 6 h job cap | ~7,200 req/run ⇒ **~11–15 runs**, therefore the sweep MUST be checkpointed/resumable |
+| Under GitHub Actions 6 h job cap | ~7,200 req/run ⇒ **~6–11 runs** expected-to-ceiling, therefore the sweep MUST be checkpointed/resumable |
 
 The 3-second limiter is **global across all hosts** — portal API, image hosts,
 S3, and archive.org draw from one budget. These are planning figures; the
