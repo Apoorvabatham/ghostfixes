@@ -243,15 +243,22 @@ is the cautionary case: **these hosts treat datacenter IPs differently, and no
 200 generalizes from one network to the other.** Every future reachability
 claim must state which vantage point it was measured from.
 
-### Item 7, round 2 — extended probe pushed (28ff0a6), results pending
+### Item 7, round 2 — first attempt died at parse; repaired workflow self-publishes
 
-The workflow now additionally probes, same method (project UA, `-m 30`,
-3-second spacing): `sahaaya2.bbmpgov.in` (one-word staff-image variant;
-`-k` because its mismatched TLS chain is a documented portal-side property),
-`nammabengaluru.s3.ap-south-1.amazonaws.com` (bare bucket root; 403
-AccessDenied on listing is expected and proves the route), and
-`web.archive.org`. Runner output pending maintainer paste; this subsection
-will be completed with those codes verbatim.
+Run 32796402468 failed at startup with zero jobs: YAML parse error. In
+`.github/workflows/stage0-reachability.yml`, the heredoc body and terminator
+sat at column 0 inside the `run: |` block scalar, so the terminator ended the
+scalar itself and YAML met URL lines where top-level keys belong. Repaired in
+fca6099: host lists became multi-line shell variables (no heredocs anywhere
+in the file), all seven hosts probe in one pass from one vantage, and
+pre-push validation (`safe_load` + `bash -n` on the extracted script) now
+precedes every workflow change.
+
+Delivery mode changed at the same time: maintainer paste is retired. The
+runner appends its results table to `docs/actions-reachability.md`
+(job-level `permissions: contents: write`) and pushes; results arrive by
+`git pull`. This is the mandatory pattern for all future CI output. Round-2
+codes will be recorded here from that file when the repaired run lands.
 
 ## Archiving mechanism — both Stage 2 archive decisions validated keyless
 
@@ -275,7 +282,9 @@ verbatim from BBMP's own published dataset, consistent with prior probes):
   ticket. Serialized into the scrape loop this dominates everything else
   (~16,747 tickets × ~81 s ≈ 16 days). Consequence recorded as **Amendment A**
   in `docs/stage1-scope-lock.md`: two-phase sweep — fast scrape phase first,
-  archiving as a separate resumable phase with staggered starts.
+  archiving as a separate resumable phase with staggered starts. (Phase 2
+  was later voided without ever running — see Amendment B in
+  `docs/stage1-scope-lock.md`.)
 - **Permanence note (flagged for maintainer sign-off before sweep-scale
   use):** the archived artifact is BBMP's own keyless JSON and contains
   whatever BBMP publishes there (address, staff name fields) — fields this
@@ -284,13 +293,27 @@ verbatim from BBMP's own published dataset, consistent with prior probes):
   rationale, but it is irreversible; sign-off requested before Phase 2 runs at
   scale. One URL is already archived as the mechanism validation above.
 
+**Resolution (2026-08-25, later): DECLINED at any scale — Amendment B.** The
+maintainer confirmed the flag as decisive: per-ticket saves would permanently
+publish invariant-1 fields (Address, Description, StaffName, ContactDetails)
+for ~16,747 citizens, irreversibly, with this project as the cause;
+keyless-and-unindexed is not public. Amendment B in
+`docs/stage1-scope-lock.md` voids Phase 2 and all per-ticket and image-URL
+archiving; only the six source CSVs get archived, once. The single
+mechanism-validation snapshot above (`ComaplaintID=20446742`) cannot be
+deleted through any sanctioned keyless route — recorded as irreversible, and
+as the reason the decision could not wait for scale.
+
 ## Blocker list, updated
 
 1. ~~Push token lacks GitHub `workflow` scope~~ **resolved** — workflow pushes
    now accepted (28ff0a6).
 2. ~~Actions reachability unknown~~ **answered for round 1** (table above);
-   round-2 codes pending paste.
+   round 2 awaits the repaired workflow (fca6099) — results land via
+   `git pull` into `docs/actions-reachability.md`.
 3. `api.bbmpgov.in` gateway failure: unchanged, portal-side, not actionable
    from here.
-4. Repository privacy means run logs are unreadable from this sandbox; probe
-   outputs arrive via maintainer paste. Accepted mode of operation.
+4. ~~Repository privacy means run logs are unreadable from this sandbox~~
+   paste mode retired 2026-08-25: CI jobs self-publish their outputs by
+   committing them under `docs/` (job-level `contents: write`) and results
+   arrive via `git pull`. Mandatory pattern for all future CI output.

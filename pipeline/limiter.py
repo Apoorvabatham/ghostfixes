@@ -1,8 +1,9 @@
 """Global request limiter — invariant 5, hard: starts ≤1 per 3 s across ALL hosts.
 
-Phase 2 archiving may overlap long server-side capture waits (scope-lock
-Amendment A): starts stay rate-gated while up to `max_in_flight` requests run
-concurrently. Clock and sleep are injectable so tests need no network, no time.
+Clock and sleep are injectable so tests need no network, no time. The
+concurrency cap stays generic (default 1 = fully serial); scope-lock
+Amendment B voided concurrent archive saves, so nothing currently raises
+`max_in_flight`.
 """
 
 import threading
@@ -10,6 +11,8 @@ from contextlib import contextmanager
 from time import monotonic, sleep as _sleep
 
 MIN_INTERVAL_S = 3.0
+
+# Retained but unused: Amendment B (2026-08-25) voided concurrent archive saves.
 MAX_IN_FLIGHT_ARCHIVE = 4
 
 

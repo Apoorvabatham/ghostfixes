@@ -125,9 +125,13 @@ Whichever it is, the reasoning goes in `docs/` before Stage 2 begins.
 
 - Prefer JSON/API endpoint over browser automation. Only reach for Playwright if
   Stage 0 proved there's no alternative.
-- Submit every ticket URL to `archive.org` at scrape time. Link the archived snapshot,
-  never the live page — the party we're auditing controls the live page and can delete
-  it.
+- **Never archive per-ticket API URLs or image URLs** (Amendment B, 2026-08-25):
+  the detail endpoint returns Address/Description/StaffName/ContactDetails and
+  images can carry faces or house numbers — Save Page Now would permanently
+  publish them for every citizen in the corpus. Tamper evidence comes from
+  `data/hashes.jsonl` instead: SHA-256 committed publicly at a known date,
+  before anyone knows which tickets get flagged. Archive the six source CSVs
+  once (already-published bulk data) to pin the ID corpus.
 - Append a daily `data/hashes.jsonl`: ticket ID, capture timestamp, image SHA-256,
   pHash, brightness mean/stddev. Commit it. This is our public tamper-evident audit
   trail — it's the receipt if anyone later claims a flag was fabricated.
@@ -209,8 +213,10 @@ rank.
 - Astro or Vite + Leaflet. Fully static, data as partitioned JSON in the repo, served
   by GitHub Pages. No SSR, no backend, no database.
 - Per-city "last successful run" timestamp on the front page.
-- Each entry: the check that fired, the raw numbers, the archived proof link. Black
-  frames may be shown inline; nothing else.
+- Each entry: the check that fired, the raw numbers, the capture date and the
+  committed hash, plus re-fetch instructions for independent verification. No
+  archived human-readable record page exists; do not imply one. Black frames may
+  be shown inline; nothing else.
 - Standing disclaimer: automated quality-assurance flags on publicly available
   grievance metadata. Include a correction route for authorities to submit valid proof
   against a flag, and log corrections publicly.

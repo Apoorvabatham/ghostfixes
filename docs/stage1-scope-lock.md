@@ -243,6 +243,12 @@ Aggregates: `probe/out/sizing/volumes.json` (gitignored).
 
 # Amendment A — 2026-08-25: measured archival cost forces a two-phase sweep
 
+> **SUPERSEDED IN PART by Amendment B (2026-08-25), at end of file:** the
+> Phase 2 plan, its ≤4-in-flight limiter interpretation, and the
+> archived-proof-link form never entered service and are void — the sweep is
+> Phase 1 only. See Amendment B for the maintainer's decision and what
+> replaces them.
+
 Per the header's amendment rule, this correction is committed before any sweep
 run touches the locked corpus. It changes §6's planning figures and §7's
 archive bullet; nothing else in the lock moves.
@@ -279,3 +285,48 @@ Stage 0 report applies here too: archived snapshots are BBMP's keyless JSON and
 irreversibly public — **maintainer sign-off is requested before Phase 2 begins**
 (the mechanism is validated on one sample URL already; no further URLs are
 archived until then).
+
+---
+
+# Amendment B — 2026-08-25: archiving policy reversed; Phase 2 void (maintainer decision)
+
+The permanence flag raised in `docs/stage0-report.md` Addendum 2 was put to
+the maintainer with a request for sign-off before Phase 2 ran at scale. The
+answer is a decline, at any scale, superseding the parts of Amendment A that
+Phase 2 depended on:
+
+> Phase 2 archiving: DECLINED at any scale. Your permanence flag is right and
+> decisive. The detail endpoint returns Address, Description, StaffName and
+> ContactDetails — the exact fields invariant 1 forbids persisting.
+> Submitting those URLs to Save Page Now would permanently publish and index
+> that PII for ~16,747 citizens, irreversibly, with us as the cause. That the
+> endpoint is keyless does not make it published; unindexed-and-keyless is
+> not public.
+
+Rules replacing every contrary statement above:
+
+1. **No per-ticket archiving of API URLs. Ever.**
+2. **No archiving of image URLs either** — same exposure through a different
+   door (faces, plates, house numbers).
+3. **The six source CSVs are archived once** — already-published bulk data,
+   no new exposure, and it pins the ID corpus. Execution record in the
+   appendix below.
+4. **`data/hashes.jsonl` remains the tamper-evidence spine:** SHA-256
+   committed publicly at a known date is stronger than a snapshot, because it
+   is published before anyone knows which tickets get flagged.
+5. **Published register entries carry ticket ID, raw numbers, capture date
+   and the committed hash**, with instructions to re-fetch and compare.
+   Stage 5 must not imply a human-readable archived record page exists.
+
+Consequences: the sweep is Phase 1 only — §6's archive rows and planning
+figures for Phase 2 are void, as is Amendment A's ≤4-in-flight limiter
+interpretation (the global start-rate gate of invariant 5 is unaffected).
+The single mechanism-validation snapshot recorded in the Stage 0 report
+(`ComaplaintID=20446742`) cannot be deleted through any sanctioned keyless
+route; it stands recorded as irreversible rather than hidden.
+
+## Appendix — source-CSV archival record (Amendment B rule 3)
+
+To be executed against the six published CKAN resource URLs, keyless Save
+Page Now, project User-Agent, ≥3 s between request starts; table filled on
+completion in this file.
