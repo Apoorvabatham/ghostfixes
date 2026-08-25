@@ -126,25 +126,29 @@ class BengaluruAdapter(CityAdapter):
     def parse_detail(self, payload) -> TicketDetail:
         # Invariant 1: Address, Description, StaffName, ContactDetails and
         # StaffRemarks exist on this payload and are deliberately NEVER read.
-        # The staff block sits beside the ticket object at top level, not
-        # inside it (documented extraction quirk).
+        # Measured shape (2026-08-25 dry-run diagnostic): the wrapper carries
+        # status/citizenComplaintDetails/staffComplaintDetails, and both
+        # ticket blocks nest one level down, side by side.
         data = payload if isinstance(payload, dict) else {}
+        citizen = data.get("citizenComplaintDetails")
+        if not isinstance(citizen, dict):
+            citizen = {}
         staff = data.get("staffComplaintDetails")
         if not isinstance(staff, dict):
             staff = {}
         urls = []
-        for candidate in (data.get("ImagePath"),
+        for candidate in (citizen.get("ImagePath"),
                           staff.get("StaffRecentAddedImage")):
             text = _text(candidate)
             if text:
                 urls.append(text)
         return TicketDetail(
-            ticket_id=str(data.get("GrievanceId") or ""),
-            ward=_text(data.get("Ward")),
-            category=_text(data.get("CategoryEnglish")),
-            sub_category=_text(data.get("SubCategoryEnglish")),
-            filed_at_raw=_text(data.get("GrievanceDate")),
-            citizen_status=_text(data.get("ComplaintStatus")),
+            ticket_id=str(citizen.get("GrievanceId") or ""),
+            ward=_text(citizen.get("Ward")),
+            category=_text(citizen.get("CategoryEnglish")),
+            sub_category=_text(citizen.get("SubCategoryEnglish")),
+            filed_at_raw=_text(citizen.get("GrievanceDate")),
+            citizen_status=_text(citizen.get("ComplaintStatus")),
             staff_status=_text(staff.get("GrievanceStatus")),
             image_urls=tuple(urls),
         )

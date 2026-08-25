@@ -7,31 +7,37 @@ from adapters.bengaluru import (
     WINDOW_END_EXCLUSIVE, WINDOW_START, parse_staff_filename,
 )
 
-# Synthetic payload: invented PII values prove they never survive
-# parsing (invariant 1); nothing here is persisted.
-PAYLOAD = {
-    "GrievanceId": 20446742,
+# Synthetic payload in the MEASURED wrapper shape (2026-08-25 dry-run
+# diagnostic): a status object plus two side-by-side blocks, every consumed
+# field one level down inside citizenComplaintDetails. Invented PII values
+# prove they never survive parsing (invariant 1); nothing here is persisted.
+CITIZEN = {
+    "GrievanceId": 20446742,  # int on the wire; str() at the boundary
     "CategoryEnglish": CATEGORY,
     "SubCategoryEnglish": "Garbage dump",
     "GrievanceDate": "2025-02-05T10:30:41",
     "Ward": "  Ward-12  ",
 }
-PAYLOAD["Address"] = "No 4, Example Street"
-PAYLOAD["Description"] = "pile not cleared"
-PAYLOAD["ImagePath"] = (
+CITIZEN["Address"] = "No 4, Example Street"
+CITIZEN["Description"] = "pile not cleared"
+CITIZEN["ImagePath"] = (
     "https://nammabengaluru.s3.ap-south-1.amazonaws.com/"
     "Sahaaya-Stg/Grievance/Images/20446742_1.jpg")
-PAYLOAD["AudioPath"] = None
-PAYLOAD["VideoPath"] = "null"
-PAYLOAD["ComplaintStatus"] = "Closed"
-PAYLOAD["staffComplaintDetails"] = {
-    "GrievanceStatus": "Closed",
-    "StaffRemarks": "cleared it",
-    "StaffName": "Example Name",
-    "ContactDetails": "9999999999",
-    "StaffRecentAddedImage": (
-        "https://sahaaya2.bbmpgov.in/ProjectImages/"
-        "GrievanceImages/20446742/2025 2 6 9 15 30.jpg"),
+CITIZEN["AudioPath"] = None
+CITIZEN["VideoPath"] = "null"
+CITIZEN["ComplaintStatus"] = "Closed"
+PAYLOAD = {
+    "status": {"StatusCode": 200, "Message": "Grievance details found"},
+    "citizenComplaintDetails": CITIZEN,
+    "staffComplaintDetails": {
+        "GrievanceStatus": "Closed",
+        "StaffRemarks": "cleared it",
+        "StaffName": "Example Name",
+        "ContactDetails": "9999999999",
+        "StaffRecentAddedImage": (
+            "https://sahaaya2.bbmpgov.in/ProjectImages/"
+            "GrievanceImages/20446742/2025 2 6 9 15 30.jpg"),
+    },
 }
 
 
@@ -89,12 +95,24 @@ class ParseDetailTests(unittest.TestCase):
             self.assertNotIn(secret, rendered)
 
     def test_null_literal_and_missing_staff_block_tolerated(self):
-        bare = {"GrievanceId": 7, "ImagePath": "null"}
+        bare = {"citizenComplaintDetails": {"GrievanceId": 7,
+                                            "ImagePath": "null"}}
         detail = ADAPTER.parse_detail(bare)
         self.assertEqual(detail.ticket_id, "7")
         self.assertIsNone(detail.staff_status)
         self.assertEqual(detail.image_urls, ())
         self.assertEqual(ADAPTER.parse_detail(None).ticket_id, "")
+
+    def test_missing_citizen_block_yields_empty_not_crash(self):
+        # A wrapper without the citizen block must degrade to an empty
+        # TicketDetail, never to a flat-read of the wrapper (the 2026-08-25
+        # bug: fields read at top level made every ticket look dateless and
+        # Stage B silently dropped the entire corpus).
+        detail = ADAPTER.parse_detail(
+            {"status": {"StatusCode": 200, "Message": "Grievance details found"}})
+        self.assertEqual(detail.ticket_id, "")
+        self.assertIsNone(detail.filed_at_raw)
+        self.assertEqual(detail.image_urls, ())
 
 
 class ImagePlanTests(unittest.TestCase):
