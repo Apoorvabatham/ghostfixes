@@ -107,5 +107,51 @@ class StageBTests(unittest.TestCase):
         self.assertIsNone(parsed)
 
 
+class DeltaTests(unittest.TestCase):
+    """api_csv_delta_minutes: the keep-side agreement signal's input."""
+
+    def declared_rule(self):
+        return SelectionRule(CATEGORY, PREFIXES, START, END,
+                             artifact_delta_minutes=(0, 720))
+
+    def test_undeclared_deltas_disable_checking(self):
+        self.assertIsNone(rule().api_csv_delta_minutes(
+            "2025-02-05T10:30:00", "2025-02-05 10:30"))
+
+    def test_same_moment_is_zero(self):
+        self.assertEqual(self.declared_rule().api_csv_delta_minutes(
+            "2025-02-05T10:30:00", "2025-02-05 10:30"), 0.0)
+
+    def test_twelve_hour_artifact_is_720(self):
+        self.assertEqual(self.declared_rule().api_csv_delta_minutes(
+            "2025-02-04T22:30:00", "2025-02-05 10:30"), 720.0)
+
+    def test_any_third_distance_is_measured(self):
+        # A timezone-style 5h30m shift must land at 330, not fold into
+        # either declared delta.
+        self.assertEqual(self.declared_rule().api_csv_delta_minutes(
+            "2025-02-05T16:00:00", "2025-02-05 10:30"), 330.0)
+
+    def test_incomparable_sides_return_none_never_verdicts(self):
+        r = self.declared_rule()
+        self.assertIsNone(r.api_csv_delta_minutes(None, "2025-02-05 10:30"))
+        self.assertIsNone(r.api_csv_delta_minutes("2025-02-05T10:30:00",
+                                                  None))
+        self.assertIsNone(r.api_csv_delta_minutes("2025-02-05T10:30:00",
+                                                  "not a date"))
+
+    def test_rejects_bad_declarations(self):
+        with self.assertRaises(ValueError):
+            SelectionRule(CATEGORY, PREFIXES, START, END,
+                          artifact_delta_minutes=())
+        with self.assertRaises(ValueError):
+            SelectionRule(CATEGORY, PREFIXES, START, END,
+                          artifact_delta_minutes=(-30,))
+        with self.assertRaises(ValueError):
+            SelectionRule(CATEGORY, PREFIXES, START, END,
+                          artifact_delta_minutes=(0,),
+                          artifact_tolerance_minutes=-1)
+
+
 if __name__ == "__main__":
     unittest.main()

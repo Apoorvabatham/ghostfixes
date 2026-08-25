@@ -1,5 +1,6 @@
 import unittest
 from dataclasses import fields
+from datetime import datetime, timedelta
 
 from pipeline.adapter_api import TicketDetail, check_adapter
 from adapters.bengaluru import (
@@ -131,6 +132,48 @@ class ImagePlanTests(unittest.TestCase):
     def test_non_http_scheme_is_unfetchable(self):
         self.assertIsNone(ADAPTER.image_plan("ftp://example.invalid/x.jpg"))
         self.assertIsNone(ADAPTER.image_plan("not a url"))
+
+
+class AgreementTests(unittest.TestCase):
+    """Declared artifact deltas against real payload/CSV timestamp shapes."""
+
+    def test_second_precision_api_vs_minute_csv_agrees(self):
+        delta = ADAPTER.selection.api_csv_delta_minutes(
+            "2025-02-05T10:30:41", "2025-02-05 10:30")
+        self.assertEqual(delta, 41 / 60)
+
+    def test_twelve_hour_artifact_band_edges_inclusive(self):
+        # The probe's artifact bucket is exactly 12 h ±5 min; band edges
+        # are accepted, one minute outside either edge is a read fault.
+        for minutes, expected_ok in ((715.0, True), (725.0, True),
+                                     (714.0, False), (726.0, False)):
+            api = "2025-02-05T10:30:00"
+            csv_dt = datetime(2025, 2, 5, 10, 30) - timedelta(
+                minutes=minutes)
+            delta = ADAPTER.selection.api_csv_delta_minutes(
+                api, csv_dt.strftime("%Y-%m-%d %H:%M"))
+            self.assertAlmostEqual(delta, minutes, msg=minutes)
+            plausible = any(
+                abs(delta - d)
+                <= ADAPTER.selection.artifact_tolerance_minutes
+                for d in ADAPTER.selection.artifact_delta_minutes)
+            self.assertEqual(plausible, expected_ok, msg=minutes)
+
+    def test_third_distance_declared_implausible(self):
+        # 13 h apart: outside both declared deltas — a read fault signature.
+        delta = ADAPTER.selection.api_csv_delta_minutes(
+            "2025-02-04T21:30:00", "2025-02-05 10:30")
+        self.assertEqual(delta, 780.0)
+        self.assertTrue(all(
+            abs(delta - d) > ADAPTER.selection.artifact_tolerance_minutes
+            for d in ADAPTER.selection.artifact_delta_minutes))
+
+    def test_declared_values_match_measurement(self):
+        self.assertEqual(ADAPTER.selection.artifact_delta_minutes,
+                         (0.0, 720.0))
+        # ±5 min: the bucket the probe itself used to classify artifacts.
+        self.assertEqual(
+            ADAPTER.selection.artifact_tolerance_minutes, 5.0)
 
 
 class StaffFilenameTests(unittest.TestCase):

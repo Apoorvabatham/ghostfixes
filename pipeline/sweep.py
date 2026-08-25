@@ -26,6 +26,7 @@ import httpx
 
 from .hashing import record_for
 from .journal import FAILED
+from .selection import parse_api_datetime
 
 TERMINAL_PHASE1 = ("scrape_done", "api_dropped")
 
@@ -78,12 +79,27 @@ class BatchHealthGuard:
       excluded from this denominator by adapter declaration
       (`selection.csv_date_is_pad`), so an all-pad batch — like the first
       142 IDs of this corpus — cannot fire it.
+    - API-vs-CSV filing-timestamp agreement (the keep-side mirror of signal
+      1). The adapter declares the measured artifact distances — for this
+      corpus ~0 and exactly 12 h ±5 min, the publisher AM/PM export
+      artifact's measured bucket (33/45 pairs within minutes, 12/45 at
+      12 h, zero elsewhere). A distance outside the declared set is a read
+      fault, not data — including on kept tickets, where a misread field
+      landing inside the window would be invisible to both other signals.
+      Halt when disagreeing/comparable >= AGREEMENT_MAX_FRAC with at least
+      MIN_COMPARED comparable pairs. Known limit, by design: a trailing
+      batch with fewer than MIN_COMPARED comparable pairs cannot fire this
+      signal regardless of its disagreement rate — a sub-20-sample fraction
+      is statistically meaningless, and the counters die with the run.
 
-    When either signal halts, the raised MassDropDegraded carries
-    `suspect_ticket_ids`: every ticket dropped since the last clean batch.
-    Those drops happened under reads now known to be suspect, so the runner
-    requeues them (journal FAILED — retryable) before propagating; resume
-    re-decides them instead of shipping a silently shrunken corpus.
+    When any signal fires, ALL violated conditions are reported in one
+    MassDropDegraded (no signal masks another), and the exception carries
+    `suspect_ticket_ids`: EVERY ticket decided in the batch, kept or
+    dropped — under reads known to be suspect, a corrupt keep is exactly
+    as suspect as a corrupt drop. The runner requeues them (journal
+    FAILED — retryable) before propagating, including when the halt comes
+    from finalize() at natural exhaustion; resume re-decides them instead
+    of shipping silently wrong data.
 
     Counters cover decisions made within one run only; a resumed run starts
     a new contiguous series. A batch evaluates when it reaches batch_size;
@@ -95,6 +111,9 @@ class BatchHealthGuard:
     BATCH_SIZE = 100
     UNPARSEABLE_MAX_FRAC = 0.20
     KEEP_FLOOR_MIN_FRAC = 0.70
+    AGREEMENT_MAX_FRAC = 0.05
+    MIN_COMPARED = 20
+    MAX_REPORTED_DELTAS = 10
 
     def __init__(self, selection, batch_size=BATCH_SIZE):
         self.selection = selection
@@ -106,13 +125,41 @@ class BatchHealthGuard:
         self.unparseable = 0
         self.non_pad = 0
         self.kept_non_pad = 0
+        self.decided_ids = []
         self.drop_ids = []
+        self.compared = 0
+        self.disagree = 0
+        self.disagree_deltas = []
+        self.uncomparable = 0
 
     def _is_pad(self, csv_date_raw):
         return self.selection.csv_date_is_pad(csv_date_raw)
 
-    def record_keep(self, csv_date_raw):
+    def _count_agreement(self, parsed, csv_date_raw):
+        """Agreement bookkeeping. `parsed is None` cases belong to signal 1;
+        API-parseable-but-CSV-unusable pairs are counted as uncomparable so
+        a shrinking comparable set stays visible."""
+        if not self.selection.artifact_delta_minutes:
+            return
+        if parsed is None:
+            return
+        if parse_api_datetime(csv_date_raw) is None:
+            self.uncomparable += 1
+            return
+
+        delta = self.selection.api_csv_delta_minutes(parsed, csv_date_raw)
+        self.compared += 1
+        if all(abs(delta - allowed)
+               > self.selection.artifact_tolerance_minutes
+               for allowed in self.selection.artifact_delta_minutes):
+            self.disagree += 1
+            if len(self.disagree_deltas) < self.MAX_REPORTED_DELTAS:
+                self.disagree_deltas.append(round(delta, 1))
+
+    def record_keep(self, ticket_id, csv_date_raw, parsed):
         self.decided += 1
+        self.decided_ids.append(str(ticket_id))
+        self._count_agreement(parsed, csv_date_raw)
         if not self._is_pad(csv_date_raw):
             self.non_pad += 1
             self.kept_non_pad += 1
@@ -121,11 +168,13 @@ class BatchHealthGuard:
         """`parsed` is None exactly when the API filing timestamp was absent
         or unparseable — the structural signature."""
         self.decided += 1
+        self.decided_ids.append(str(ticket_id))
         self.drop_ids.append(str(ticket_id))
         if parsed is None:
             self.unparseable += 1
         elif not self._is_pad(csv_date_raw):
             self.non_pad += 1
+        self._count_agreement(parsed, csv_date_raw)
 
     def evaluate_batch(self):
         if self.decided >= self.batch_size:
@@ -135,30 +184,47 @@ class BatchHealthGuard:
         if self.decided > 0:
             self._raise_if_unhealthy()
 
-    def _raise_if_unhealthy(self):
+    def _violation_messages(self):
+        messages = []
         unparseable_frac = self.unparseable / self.decided
-        suspects = list(self.drop_ids)
         if unparseable_frac >= self.UNPARSEABLE_MAX_FRAC:
-            exc = MassDropDegraded(
-                f"batch health: {self.unparseable}/{self.decided} Stage-B "
-                "decisions had no parseable API filing timestamp "
+            messages.append(
+                f"{self.unparseable}/{self.decided} Stage-B decisions had "
+                "no parseable API filing timestamp "
                 f"({unparseable_frac:.0%} >= "
-                f"{self.UNPARSEABLE_MAX_FRAC:.0%}) — reads are broken, not "
-                "the data; halting")
-            exc.suspect_ticket_ids = suspects
-            raise exc
+                f"{self.UNPARSEABLE_MAX_FRAC:.0%})")
         if self.non_pad:
             keep_frac = self.kept_non_pad / self.non_pad
             if keep_frac < self.KEEP_FLOOR_MIN_FRAC:
-                exc = MassDropDegraded(
-                    f"batch health: {self.kept_non_pad}/{self.non_pad} kept "
-                    f"among non-pad candidates ({keep_frac:.0%} < "
-                    f"{self.KEEP_FLOOR_MIN_FRAC:.0%}) with "
-                    f"{self.unparseable}/{self.decided} unparseable — mass "
-                    "drop indicates structural read failure; halting")
-                exc.suspect_ticket_ids = suspects
-                raise exc
-        self._reset()
+                messages.append(
+                    f"{self.kept_non_pad}/{self.non_pad} kept among non-pad "
+                    f"candidates ({keep_frac:.0%} < "
+                    f"{self.KEEP_FLOOR_MIN_FRAC:.0%})")
+        if self.compared >= self.MIN_COMPARED:
+            disagree_frac = self.disagree / self.compared
+            if disagree_frac >= self.AGREEMENT_MAX_FRAC:
+                samples = ", ".join(str(d) for d in self.disagree_deltas)
+                messages.append(
+                    f"{self.disagree}/{self.compared} API-vs-CSV distances "
+                    "outside the declared artifact set "
+                    f"({disagree_frac:.0%} >= "
+                    f"{self.AGREEMENT_MAX_FRAC:.0%})"
+                    + (f" [sample distances in minutes: {samples}]"
+                       if samples else ""))
+        return messages
+
+    def _raise_if_unhealthy(self):
+        messages = self._violation_messages()
+        if not messages:
+            self._reset()
+            return
+        suffix = (f" ({self.uncomparable} further decisions had no "
+                  "comparable CSV timestamp)" if self.uncomparable else "")
+        exc = MassDropDegraded(
+            "batch health: " + "; ".join(messages) +
+            " — reads are broken, not the data; halting" + suffix)
+        exc.suspect_ticket_ids = list(self.decided_ids)
+        raise exc
 
 
 class SweepRunner:
@@ -205,13 +271,7 @@ class SweepRunner:
             except SurfaceDegraded:
                 raise
             except MassDropDegraded as exc:
-                # The batch's drops happened under reads now known to be
-                # suspect. Requeue them (FAILED is reachable from any state
-                # and retryable) so resume re-decides them instead of
-                # shipping a silently shrunken corpus; then halt loudly.
-                for suspect_id in getattr(exc, "suspect_ticket_ids", ()):
-                    self.journal.append(suspect_id, FAILED,
-                                        stage="mass_drop_requeue")
+                self._requeue_suspects(exc)
                 raise
             except (httpx.HTTPError, ValueError, KeyError) as exc:
                 self.journal.append(tid, FAILED, stage="exception",
@@ -224,9 +284,21 @@ class SweepRunner:
             # Natural end of manifest: the trailing partial batch is a real
             # sample and gets evaluated. A `limit` stop or a raised halt
             # skips this — a killed run's counters die with the process.
-            self.health.finalize()
+            try:
+                self.health.finalize()
+            except MassDropDegraded as exc:
+                self._requeue_suspects(exc)
+                raise
         stats.update(self.image_totals)
         return stats
+
+    def _requeue_suspects(self, exc):
+        """Every ticket decided under reads now known to be suspect goes
+        back to FAILED (reachable from any state, retryable) so resume
+        re-decides them instead of shipping silently wrong data."""
+        for suspect_id in getattr(exc, "suspect_ticket_ids", ()):
+            self.journal.append(suspect_id, FAILED,
+                                stage="mass_drop_requeue")
 
     def _process(self, tid):
         state = self.journal.state_of(tid)
@@ -262,7 +334,7 @@ class SweepRunner:
                                 api_date_raw=detail.filed_at_raw)
             self.health.evaluate_batch()
             return "api_dropped"
-        self.health.record_keep(csv_date)
+        self.health.record_keep(tid, csv_date, parsed)
         self.journal.append(
             tid, "api_kept", api_date=parsed,
             csv_date_raw=csv_date,

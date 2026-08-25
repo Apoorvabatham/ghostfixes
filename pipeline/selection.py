@@ -47,7 +47,8 @@ class SelectionRule:
     """
 
     def __init__(self, category, csv_date_prefixes, window_start,
-                 window_end_exclusive, pad_day_prefixes=()):
+                 window_end_exclusive, pad_day_prefixes=(),
+                 artifact_delta_minutes=None, artifact_tolerance_minutes=2):
         if not isinstance(category, str) or not category:
             raise ValueError("category must be a non-empty string")
         if not csv_date_prefixes or not all(
@@ -64,9 +65,22 @@ class SelectionRule:
             if prefix not in self._as_tuple(csv_date_prefixes):
                 raise ValueError(
                     "pad_day_prefixes must be a subset of csv_date_prefixes")
+        if artifact_delta_minutes is not None:
+            if not artifact_delta_minutes or not all(
+                    isinstance(d, (int, float)) and d >= 0
+                    for d in artifact_delta_minutes):
+                raise ValueError(
+                    "artifact_delta_minutes must be non-negative numbers "
+                    "when declared")
+        if artifact_tolerance_minutes < 0:
+            raise ValueError("artifact_tolerance_minutes must be >= 0")
         self.category = category
         self.csv_date_prefixes = tuple(csv_date_prefixes)
         self.pad_day_prefixes = pads
+        self.artifact_delta_minutes = (
+            None if artifact_delta_minutes is None
+            else tuple(float(d) for d in artifact_delta_minutes))
+        self.artifact_tolerance_minutes = float(artifact_tolerance_minutes)
         self.window_start = start
         self.window_end_exclusive = end
 
@@ -81,6 +95,28 @@ class SelectionRule:
         form (padding exists, is declared, stays a subset of Stage-A
         prefixes); the adapter declares which prefixes pad."""
         return (csv_grievance_date or "").startswith(self.pad_day_prefixes)
+
+    def api_csv_delta_minutes(self, api_parsed, csv_date_raw):
+        """Absolute minute distance between the live API filing timestamp
+        (canonical form) and the published CSV timestamp.
+
+        Returns None when the adapter declared no artifact deltas (checking
+        disabled) or when either side is absent or unparseable — nothing
+        comparable, never a verdict. The declared deltas plus tolerance are
+        the ONLY acceptable distances; the adapter measures them (for this
+        corpus: 33/45 pairs within 2 minutes, 12/45 exactly 12 h apart,
+        zero anywhere else — docs/citizen-exif-probe-2026-08-25.md), and a
+        distance outside them is a read fault, not data.
+        """
+        if not self.artifact_delta_minutes or api_parsed is None:
+            return None
+        csv_parsed = parse_api_datetime(csv_date_raw)
+        if csv_parsed is None:
+            return None
+        from datetime import datetime
+        api_dt = datetime.strptime(api_parsed, "%Y-%m-%dT%H:%M:%S")
+        csv_dt = datetime.strptime(csv_parsed, "%Y-%m-%dT%H:%M:%S")
+        return abs((api_dt - csv_dt).total_seconds()) / 60.0
 
     def is_stage_a_candidate(self, category, csv_grievance_date):
         """Return (is_candidate, note) for one published CSV row.

@@ -34,6 +34,17 @@ CSV_DATE_PREFIXES = (
 # exclude pad-day candidates from its keep-floor denominator: their drops
 # are expected membership facts, not health signals.
 PAD_DAY_PREFIXES = ("2024-12-31", "2025-04-01")
+
+# Measured API-vs-CSV filing-timestamp distances (citizen-exif probe,
+# 2026-08-25): 33/45 pairs within ~2 minutes, 12/45 at exactly 12 h ±5 min
+# (the publisher's AM/PM export artifact, classified at ±5 min in the
+# probe), zero anywhere else. Declared so the batch-health guard treats
+# any third distance as a read fault — including on kept tickets, where a
+# misread field landing inside the window would otherwise be invisible.
+# Tolerance is ±5 min because that is the bucket the measurement itself
+# used; a tighter band would count real artifacts as read faults.
+ARTIFACT_DELTA_MINUTES = (0, 720)
+ARTIFACT_TOLERANCE_MINUTES = 5
 WINDOW_START = "2025-01-01T00:00:00"
 WINDOW_END_EXCLUSIVE = "2025-04-01T00:00:00"
 
@@ -122,7 +133,9 @@ def _text(value):
 class BengaluruAdapter(CityAdapter):
     name = "bengaluru"
     selection = SelectionRule(CATEGORY, CSV_DATE_PREFIXES, WINDOW_START,
-                              WINDOW_END_EXCLUSIVE, PAD_DAY_PREFIXES)
+                              WINDOW_END_EXCLUSIVE, PAD_DAY_PREFIXES,
+                              ARTIFACT_DELTA_MINUTES,
+                              ARTIFACT_TOLERANCE_MINUTES)
 
     def detail_url(self, ticket_id: str) -> str:
         return DETAIL_URL_TEMPLATE.format(ticket_id=ticket_id)
