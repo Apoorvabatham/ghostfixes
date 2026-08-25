@@ -82,3 +82,20 @@ class JournalTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ContextManagerTests(unittest.TestCase):
+    def test_closes_on_clean_exit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "j.jsonl")
+            with SweepJournal(path) as j:
+                j.append(1, "candidate")
+            self.assertTrue(j._fh.closed)
+
+    def test_closes_on_exception_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "j.jsonl")
+            with self.assertRaises(RuntimeError):
+                with SweepJournal(path) as j:
+                    raise RuntimeError("ticket blew up")
+            self.assertTrue(j._fh.closed)

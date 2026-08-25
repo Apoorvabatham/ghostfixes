@@ -10,7 +10,12 @@ import re
 from datetime import datetime
 from urllib.parse import urlsplit
 
-from pipeline.adapter_api import CityAdapter, ImageFetch, TicketDetail
+from pipeline.adapter_api import (
+    CityAdapter,
+    CsvRow,
+    ImageFetch,
+    TicketDetail,
+)
 from pipeline.selection import SelectionRule
 
 # --- locked scope (docs/stage1-scope-lock.md §1–§2) ---
@@ -41,6 +46,31 @@ DETAIL_URL_TEMPLATE = (
 # its name — a documented property of this portal's infrastructure since the
 # first probe; fetching measures reachability, not certificate validity.
 _TLS_UNTRUSTED_HOSTS = frozenset({"sahaaya2.bbmpgov.in"})
+
+# Bulk-CSV resources (data.opencity.in CKAN, `bbmp-grievances-data`).
+# Only the years the padded window can touch are ingested: the 2025 file for
+# the window proper, the 2024 file because its 2024-12-31 rows are exactly
+# what the pad-below prefix exists to catch. Other years exist in the same
+# dataset; add them only if an amendment widens the window.
+CSV_URLS = {
+    "2024": (
+        "https://data.opencity.in/dataset/54344a76-a37a-4d05-961c-df9bac5494ad"
+        "/resource/2a3f29ef-a7a1-4fc3-b125-cbcc958a89d1"
+        "/download/82f88d50-71c5-4203-92ac-5ccb5cabc7a2.csv"),
+    "2025": (
+        "https://data.opencity.in/dataset/54344a76-a37a-4d05-961c-df9bac5494ad"
+        "/resource/1342a93b-9a61-4766-9c34-c8357b7926c2"
+        "/download/b0d6e9ff-5eef-48bf-ba86-985dbe8112d1.csv"),
+}
+
+# Publisher column names — payload field knowledge, so it lives here, not in
+# pipeline/. Staff Name / Staff Remarks / Ward Name / Sub Category / Status
+# columns are never read by parse_csv_row.
+CSV_FIELDS = {
+    "ticket_id": "Complaint ID",
+    "category": "Category",
+    "csv_date": "Grievance Date",
+}
 
 # Staff-photo filename timestamp grammar (docs/stage1-gate.md §4b): an
 # unpadded local timestamp as space-separated groups YYYY M D H M [S].
@@ -125,6 +155,21 @@ class BengaluruAdapter(CityAdapter):
             return None
         host = (parsed.netloc or "").lower()
         return ImageFetch(url=url, verify_tls=host not in _TLS_UNTRUSTED_HOSTS)
+
+    def csv_sources(self) -> dict:
+        return dict(CSV_URLS)
+
+    def parse_csv_row(self, row) -> CsvRow | None:
+        if not isinstance(row, dict):
+            return None
+        ticket_id = (row.get(CSV_FIELDS["ticket_id"]) or "").strip()
+        if not ticket_id:
+            return None
+        return CsvRow(
+            ticket_id=ticket_id,
+            category=row.get(CSV_FIELDS["category"]) or "",
+            csv_date=row.get(CSV_FIELDS["csv_date"]) or "",
+        )
 
     def staff_resolution_timestamp(self, filename: str) -> str | None:
         return parse_staff_filename(filename)

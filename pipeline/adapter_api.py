@@ -35,6 +35,16 @@ class TicketDetail:
 
 
 @dataclass(frozen=True)
+class CsvRow:
+    """The only facts read from a publisher's bulk-CSV row. Column-name
+    knowledge lives in the adapter; mechanism never sees raw headers."""
+
+    ticket_id: str
+    category: str
+    csv_date: str
+
+
+@dataclass(frozen=True)
 class ImageFetch:
     """How to fetch one image URL. TLS trust is per-host adapter policy,
     because broken chains are properties of specific portals' infrastructure,
@@ -65,6 +75,18 @@ class CityAdapter(ABC):
         """Fetch parameters for one image URL; None when unfetchable.
         Default: same URL over verified TLS."""
         return ImageFetch(url=url)
+
+    def csv_sources(self) -> dict:
+        """label -> URL of the bulk-CSV resources this run's Stage A needs
+        (only the years the padded window can touch). Empty default: a
+        portal with no bulk publication supplies candidates some other way
+        or is out of scope."""
+        return {}
+
+    def parse_csv_row(self, row) -> CsvRow | None:
+        """Map one raw publisher-CSV row onto CsvRow, reading only the
+        whitelisted columns. None when the row lacks an ID."""
+        return None
 
     def staff_resolution_timestamp(self, filename: str) -> str | None:
         """Resolution moment encoded in a staff-photo filename, canonical

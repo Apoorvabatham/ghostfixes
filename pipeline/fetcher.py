@@ -23,6 +23,7 @@ class PortalClient:
         self._timeout = timeout
         self._transport = transport
         self._clients = {}
+        self.requests_made = 0
 
     def client_for(self, verify_tls: bool) -> httpx.Client:
         """One cached client per trust level; adapters map hosts to levels."""
@@ -40,11 +41,21 @@ class PortalClient:
             self._clients[key] = client
         return client
 
+    def get_bytes(self, url) -> httpx.Response:
+        """Rate-limited full-body GET over verified TLS, response held in
+        memory only. Publisher bulk CSVs contain PII-bearing columns, so
+        they must never touch disk: callers parse straight from
+        resp.content and drop it."""
+        with self._limiter.request():
+            self.requests_made += 1
+            return self.client_for(True).get(url)
+
     def fetch_detail(self, adapter, ticket_id) -> httpx.Response:
         """One rate-limited detail GET over verified TLS. The response is
         returned raw; the caller journals status and parses."""
         url = adapter.detail_url(str(ticket_id))
         with self._limiter.request():
+            self.requests_made += 1
             return self.client_for(True).get(url)
 
     def fetch_image(self, adapter, url):
@@ -54,6 +65,7 @@ class PortalClient:
         if plan is None:
             return None
         with self._limiter.request():
+            self.requests_made += 1
             return self.client_for(plan.verify_tls).get(plan.url)
 
     def close(self):

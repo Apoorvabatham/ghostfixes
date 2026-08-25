@@ -77,5 +77,25 @@ class HashLog:
                 self._warned_no_fsync = True
         return record
 
+    def existing_pairs(self):
+        """(ticket_id, url) pairs already on disk, from replaying the file.
+        Gives exact-once per-image work across restarts; an unparsable line
+        fails loudly rather than silently shrinking the done-set."""
+        out = set()
+        if not os.path.exists(self.path):
+            return out
+        with open(self.path, encoding="utf-8") as fh:
+            for lineno, line in enumerate(fh, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"{self.path}:{lineno}: unparsable "
+                                     "hash record — fail loudly") from exc
+                out.add((rec["ticket_id"], rec["url"]))
+        return out
+
     def close(self):
         self._fh.close()

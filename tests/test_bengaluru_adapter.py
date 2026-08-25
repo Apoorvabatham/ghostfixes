@@ -144,3 +144,22 @@ class StaffFilenameTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CsvRowTests(unittest.TestCase):
+    def test_csv_sources_are_pinned_window_years_only(self):
+        self.assertEqual(sorted(ADAPTER.csv_sources()), ["2024", "2025"])
+
+    def test_parse_csv_row_reads_whitelisted_columns_only(self):
+        row = {"Complaint ID": " 20446742 ", "Category": " " + CATEGORY,
+               "Grievance Date": "2025-02-05 10:30",
+               "Ward Name": "Ward-12", "Staff Name": "Example Name"}
+        parsed = ADAPTER.parse_csv_row(row)
+        self.assertEqual(parsed.ticket_id, "20446742")
+        # Category stays RAW here: padding/normalisation is Stage A's job and
+        # must reach it unmodified so normalization_fired records truthfully.
+        self.assertEqual(parsed.category, " " + CATEGORY)
+        self.assertEqual(parsed.csv_date, "2025-02-05 10:30")
+
+    def test_row_without_id_is_none(self):
+        self.assertIsNone(ADAPTER.parse_csv_row({"Category": "x"}))
