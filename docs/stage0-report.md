@@ -257,8 +257,31 @@ precedes every workflow change.
 Delivery mode changed at the same time: maintainer paste is retired. The
 runner appends its results table to `docs/actions-reachability.md`
 (job-level `permissions: contents: write`) and pushes; results arrive by
-`git pull`. This is the mandatory pattern for all future CI output. Round-2
-codes will be recorded here from that file when the repaired run lands.
+`git pull`. This is the mandatory pattern for all future CI output.
+
+**Run 32848776574 (2026-08-25T12:39:49Z, Actions vantage), full seven-host
+table** (local-sandbox comparison column added here):
+
+| Host | Actions runner | Local sandbox |
+|---|---|---|
+| `mcdonline.nic.in` | **200** (4.9 s) | 200 |
+| `bbmp.gov.in` | **000 — connection failed** | 200 |
+| `sahaaya2.bbmp.gov.in` (detail API) | **200** (1.5 s) | 200 |
+| `data.opencity.in` (CKAN API) | **200** (0.7 s) | 200 |
+| `sahaaya2.bbmpgov.in` (staff images, `-k`) | **200** (1.1 s) | 200 (`-k`) |
+| `nammabengaluru.s3.ap-south-1.amazonaws.com` | **403** (0.72 s) | 403 at root; objects served keyless locally |
+| `web.archive.org` | **200** (0.5 s) | 200 |
+
+Interpretation, kept within what was measured: every host the Phase 1 sweep
+depends on answers from an Actions runner — including the one-word
+staff-image host, the surface recycled-image detection lives on, serving 200
+keyless from a datacenter IP. The S3 403 is the expected AccessDenied on
+bucket *listing* and proves route/DNS/TLS only: **object-level keyless fetch
+from a runner is not yet measured** and stays open until first exercised
+(S3 endpoints also treat datacenter IPs variably). `bbmp.gov.in` fails from
+runners for the second consecutive run while answering locally — the
+asymmetry is confirmed twice and recorded as a standing property of these
+hosts, not an anomaly.
 
 ## Archiving mechanism — both Stage 2 archive decisions validated keyless
 
@@ -308,9 +331,10 @@ as the reason the decision could not wait for scale.
 
 1. ~~Push token lacks GitHub `workflow` scope~~ **resolved** — workflow pushes
    now accepted (28ff0a6).
-2. ~~Actions reachability unknown~~ **answered for round 1** (table above);
-   round 2 awaits the repaired workflow (fca6099) — results land via
-   `git pull` into `docs/actions-reachability.md`.
+2. ~~Actions reachability unknown~~ **answered, both rounds** (tables above;
+   run 32848776574 self-published via `docs/actions-reachability.md`). Open
+   residual: S3 *object-level* fetch from a runner, unmeasured until first
+   exercised.
 3. `api.bbmpgov.in` gateway failure: unchanged, portal-side, not actionable
    from here.
 4. ~~Repository privacy means run logs are unreadable from this sandbox~~
