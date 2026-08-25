@@ -138,6 +138,9 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--sample", choices=("first", "stride"),
                         default="first")
+    parser.add_argument("--max-requests", type=int, default=None,
+                        help="stop crash-shaped once this many requests "
+                             "have been made; resume continues from disk")
     parser.add_argument("--data-dir", default="probe/out/dryrun")
     args = parser.parse_args(argv)
 
@@ -165,7 +168,7 @@ def main(argv=None):
     hpath = os.path.join(outdir, f"hashes{suffix}.jsonl")
     with SweepJournal(jpath) as journal, HashLog(hpath) as hashlog:
         runner = SweepRunner(ADAPTER, client, journal, hashlog, subset)
-        stats = runner.run()
+        stats = runner.run(request_budget=args.max_requests)
         elapsed = time.monotonic() - started
 
     summary = {

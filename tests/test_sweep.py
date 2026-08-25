@@ -320,6 +320,15 @@ class GuardTests(Harness):
         self.assertEqual(stats["scrape_done"], 4)
         self.assertEqual(stats["api_dropped"], 1)
 
+    def test_request_budget_stops_crash_shaped_without_finalize(self):
+        # A budgeted CI batch hands over mid-corpus: the stop must not
+        # synthesize a trailing-batch evaluation from a partial series.
+        stats = self.run_with(self.detail_handler(payloads_for),
+                              request_budget=1)
+        self.assertEqual(stats["candidates"], 1)
+        # Reaching here without MassDropDegraded is itself the assertion:
+        # the partial series stayed unevaluated.
+
     def test_limit_stop_does_not_evaluate_partial_batch(self):
         # Below batch_size and not exhaustion: a limit stop is crash-shaped,
         # and no evaluation may synthesize itself from a partial series.

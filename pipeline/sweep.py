@@ -243,7 +243,7 @@ class SweepRunner:
                            for rec in manifest}
         self.image_totals = {"images_hashed": 0, "images_failed_object": 0}
 
-    def run(self, limit=None):
+    def run(self, limit=None, request_budget=None):
         stats = {
             "candidates": 0, "api_kept": 0, "api_dropped": 0,
             "scrape_done": 0, "failed": 0,
@@ -258,6 +258,14 @@ class SweepRunner:
                 # non-terminal candidates the tail batch goes unevaluated —
                 # its decisions are already terminal and a later full run
                 # has nothing left to sample.
+                exhausted = False
+                break
+            if request_budget is not None and \
+                    self.client.requests_made >= request_budget:
+                # Same crash-shaped semantics as a `limit` stop: a budgeted
+                # CI batch hands over to the next run. Overshoot is bounded
+                # by one ticket's image work (<= ~2 requests), never by a
+                # retry storm.
                 exhausted = False
                 break
             tid = rec["ticket_id"]
