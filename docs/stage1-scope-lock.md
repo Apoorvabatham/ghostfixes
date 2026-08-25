@@ -366,3 +366,51 @@ All six CDX entries carry mimetype `text/csv`. Replay spot-check on the 2025
 snapshot (canonical form `web.archive.org/web/20260825125445/<url>`):
 HTTP 200, `text/csv`, 18,272,067 bytes. The ID corpus for the locked window
 is thereby pinned at a known date under Amendment B's rules.
+
+# Amendment C — 2026-08-25: mechanism-validation stride sample for Phase 1 dry runs
+
+Committed **before** any run under this rule, per the lock header.
+
+## Motivation (measured)
+
+The recorded dry-run subset rule — first N manifest rows in ascending
+numeric ID order — lands entirely inside the 2024-12-31 padding day: all 50
+sampled tickets are genuine December filings by live-API timestamp, and
+Stage B correctly drops every one. The rule is therefore structurally
+unable to exercise the kept path (image fetch, hashing, scrape-stage
+resume) that a dry run exists to validate before a full sweep. The same
+would happen from the tail (248 April-pad rows). This amendment adds one
+supplementary rule; it does not change the locked selection rule of §2 in
+any way.
+
+## The rule
+
+**Stride sample**: over the committed Stage-A manifest in its deterministic
+order, take indices `k × ⌊len(candidates) / N⌋` for `k = 0 … N−1`
+(N = 50 default). On today's manifest of 17,137 candidates that is every
+342nd row — a content-blind positional spread across the whole padded
+window. No category, ward, status or outcome ever influences membership;
+the rule is computed from list position alone and stated here before the
+run it governs.
+
+## What this sample is, and what it must never be cited as
+
+This is a **mechanism-validation sample**, not a statistical sample. It
+exists to prove the machinery works end-to-end on kept tickets. It MUST
+NOT be cited as evidence about Q1 prevalence, drop rates, ward or category
+distributions, or any other substantive property of the window — stride
+positions correlate with filing time, and N is far too small for any rate
+claim. Detection thresholds tuned against it inherit the same restriction,
+mirroring the Stage 4/7 rule that precision does not transfer.
+
+## Containment
+
+- Outputs stay in `probe/out/dryrun/` (gitignored), as sibling files
+  (`journal_stride.jsonl`, `hashes_stride.jsonl`, `summary_stride.json`);
+  nothing from a stride run ever enters `data/`.
+- Request budget: bounded by the same Phase 1 ceiling — at most ~N × 4.5
+  additional requests, drawn from the same global 3-second limiter.
+- The recorded first-N rule remains the default mode and the reference
+  dry run; stride runs are labelled `--sample stride` and their logs name
+  Amendment C.
+

@@ -1,14 +1,26 @@
 """Bounded Phase 1 dry run — end-to-end over a small mechanical subset.
 
-Subset rule, stated BEFORE running (scope-lock requirement): the FIRST N
-entries of the Stage A manifest in ascending numeric ticket-ID order.
-N=50 by default; nothing here is hand-picked after looking at tickets.
+Two subset rules, both stated BEFORE running and both purely positional —
+nothing here is hand-picked after looking at tickets:
 
-Everything lands in probe/out/dryrun/ (gitignored). The full manifest is
-written there too — the committed data/manifest comes only with the real
-sweep. Checks enforced at the end:
-  - every journal record's keys sit inside the allowed universe;
-  - every hash record's keys sit inside the allowed universe;
+  --sample first (default): the FIRST N entries of the Stage A manifest in
+  ascending numeric ticket-ID order. Recorded dry-run rule. On this corpus
+  it lands inside the December-31 padding day, so it exercises selection,
+  Stage-B drops and crash-resume but structurally cannot reach the kept
+  path.
+
+  --sample stride: Amendment C (2026-08-25, docs/stage1-scope-lock.md) —
+  indices k*(len//N), a systematic content-blind spread across the whole
+  padded window. Explicitly a MECHANISM-VALIDATION sample: it exists to
+  exercise image fetch, hashing and scrape-stage resume, and must never be
+  cited as evidence about Q1 prevalence or any rate.
+
+Everything lands in probe/out/dryrun/ (gitignored); the stride sample
+writes to *{_stride}.jsonl siblings and never touches data/. The full
+manifest is written there too — the committed data/manifest comes only
+with the real sweep. Checks enforced at the end:
+  - every journal/hash/manifest record's keys sit inside its allowed
+    universe;
   - no Indian mobile-number or email pattern appears in ANY output file
     (digit-run guarded so epoch milliseconds cannot false-positive);
   - measured per-ticket request count is reported against the 4.5 figure.
@@ -73,23 +85,41 @@ JOURNAL_ALLOWED = {"ticket_id", "ts_utc", "state", "api_date",
 HASH_ALLOWED = {"ticket_id", "ts_utc", "url", "image_sha256", "phash",
                 "brightness_mean", "brightness_stddev", "width", "height",
                 "format"}
-PHONE_RE = re.compile(r"(?<![0-9])[6-9][0-9]{9}(?![0-9])")
+MANIFEST_ALLOWED = {"ticket_id", "source", "csv_date_raw", "category_exact",
+                    "normalization_fired"}
+# Hex-boundary-guarded: a match adjacent to [a-fA-F] is inside a hash or
+# other hex string (sha256/pHash carry ~3% false trips per digest raw, which
+# would fail most clean stride legs). Pure-digit fields still match.
+PHONE_RE = re.compile(r"(?<![0-9a-fA-F])[6-9][0-9]{9}(?![0-9a-fA-F])")
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def stride_subset(candidates, n):
+    """Amendment C mechanism-validation sample: indices k*(len//n).
+
+    A function of list position alone — no category, ward or outcome ever
+    influences membership. Not a statistical sample; see module docstring.
+    """
+    stride = max(1, len(candidates) // n)
+    return [candidates[k * stride] for k in range(n)]
 
 
 def check_outputs(outdir):
     problems = []
-    for name, allowed in (("journal.jsonl", JOURNAL_ALLOWED),
-                          ("hashes.jsonl", HASH_ALLOWED)):
-        path = os.path.join(outdir, name)
-        if not os.path.exists(path):
-            continue
-        with open(path, encoding="utf-8") as fh:
-            for lineno, line in enumerate(fh, 1):
-                rec = json.loads(line)
-                extra = set(rec) - allowed
-                if extra:
-                    problems.append(f"{name}:{lineno}: extra keys {extra}")
+    plans = (("journal", JOURNAL_ALLOWED), ("hashes", HASH_ALLOWED),
+             ("manifest", MANIFEST_ALLOWED))
+    for prefix, allowed in plans:
+        for name in sorted(os.listdir(outdir)):
+            if not (name.startswith(prefix) and name.endswith(".jsonl")):
+                continue
+            path = os.path.join(outdir, name)
+            with open(path, encoding="utf-8") as fh:
+                for lineno, line in enumerate(fh, 1):
+                    rec = json.loads(line)
+                    extra = set(rec) - allowed
+                    if extra:
+                        problems.append(
+                            f"{name}:{lineno}: extra keys {sorted(extra)}")
     for name in os.listdir(outdir):
         path = os.path.join(outdir, name)
         if not os.path.isfile(path):
@@ -106,6 +136,8 @@ def check_outputs(outdir):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument("--sample", choices=("first", "stride"),
+                        default="first")
     parser.add_argument("--data-dir", default="probe/out/dryrun")
     args = parser.parse_args(argv)
 
@@ -116,12 +148,21 @@ def main(argv=None):
 
     candidates = build_full_manifest(client, outdir)
     csv_requests = client.requests_made
-    subset = candidates[:args.limit]
-    print(f"subset rule: first {len(subset)} of {len(candidates)} "
-          "candidates, ascending numeric ID order")
+    if args.sample == "stride":
+        subset = stride_subset(candidates, args.limit)
+        suffix = "_stride"
+        print(f"subset rule: Amendment C stride sample — indices k*"
+              f"{max(1, len(candidates) // args.limit)} over {len(candidates)} "
+              f"candidates ({len(subset)} tickets); mechanism-validation "
+              "sample, not statistical")
+    else:
+        subset = candidates[:args.limit]
+        suffix = ""
+        print(f"subset rule: first {len(subset)} of {len(candidates)} "
+              "candidates, ascending numeric ID order")
 
-    jpath = os.path.join(outdir, "journal.jsonl")
-    hpath = os.path.join(outdir, "hashes.jsonl")
+    jpath = os.path.join(outdir, f"journal{suffix}.jsonl")
+    hpath = os.path.join(outdir, f"hashes{suffix}.jsonl")
     with SweepJournal(jpath) as journal, HashLog(hpath) as hashlog:
         runner = SweepRunner(ADAPTER, client, journal, hashlog, subset)
         stats = runner.run()
@@ -135,7 +176,7 @@ def main(argv=None):
             client.requests_made / max(len(subset), 1), 2),
         "stats": stats,
     }
-    path = os.path.join(outdir, "summary.json")
+    path = os.path.join(outdir, f"summary{suffix}.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=2, sort_keys=True)
     print(json.dumps(summary, indent=2, sort_keys=True))
