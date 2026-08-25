@@ -414,3 +414,81 @@ mirroring the Stage 4/7 rule that precision does not transfer.
   dry run; stride runs are labelled `--sample stride` and their logs name
   Amendment C.
 
+
+# Amendment D — 2026-08-26 (approved): image-presence expectations re-measured on the locked vintage
+
+Status: maintainer-approved. The ceiling row of §6 is unchanged. The
+per-kept-ticket figure below is an **engineering expectation derived from a
+mechanism-validation sample** (Amendment C): it comes from 49 kept tickets
+and must not harden into a measured rate.
+
+## Measurement
+
+Exhaustive verification over every kept ticket of the stride sample that
+produced no hashable image (16 with no URL + 3 whose single URL failed at
+object level), by fresh raw-payload refetch:
+
+- All 16 no-URL payloads carry `ImagePath` and `StaffRecentAddedImage` as
+  **present-but-empty strings server-side**, with no other URL-bearing key
+  in either block; adapter-vs-payload diff: 0 extracted vs 0 present,
+  MATCH on all 19 tickets, mismatches zero.
+- Fully-hashed control tickets prove extraction correctness end-to-end on
+  the same vintage.
+- Presence among 49 kept tickets: staff photo **26/49 (53%)**, citizen
+  photo **10/49 (20%)**, neither **16/49 (33%)**. Hashed yield
+  **0.73 images/kept** (attempted 0.80).
+- The earlier sampling's staff ~85% / citizen ~40% does not hold on
+  Q1-2025 filings. Vintage drift and storage-side retention decay cannot
+  be separated from inside this corpus; any published methodology note
+  says so.
+
+## Consequences for §6
+
+- Expected requests become 17,137 + 16,747 × 0.75 ≈ **29,700**
+  (limiter floor ≈ 24.8 h). The 4.5-per-candidate worst-case ceiling row
+  stands unchanged.
+- **The sweep shortening is NOT efficiency.** Roughly **12,200 images
+  reach the headline check instead of ~21,000**, and pHash candidate pairs
+  shrink faster than image count does (pair-count scales roughly with the
+  square of per-ward corpus depth). Stage 4 precision must be read against
+  that thinner corpus, and published next to its numbers.
+
+# Amendment E — 2026-08-26 (maintainer ruling): fast-closure check retired on this corpus
+
+Check 3 (time-to-close from staff-photo filename timestamps) is RETIRED
+for the locked window; the Stage 3 ladder in CLAUDE.md is reduced to
+recycled-image (headline), obstructed-lens (secondary), aged-open
+(backlog).
+
+## Why
+
+Every staff-photo filename observed on the Q1-2025 vintage carries a
+**packed digit timestamp** (`202511095856STAFF…`) — zero instances of the
+space-separated grammar the existing parser requires. Recovering a
+timestamp from packed digits by choosing among candidate splits using each
+ticket's API filing time is PROHIBITED: check 3 measures closure relative
+to filing, so filing-guided disambiguation selects the parses that produce
+plausible time-to-close values and then reports them as findings about
+filing. A plausibility-biased parse rule suppresses exactly the signal
+the check hunts.
+
+## Filing-blind exception, tested and measured
+
+A deterministic rule that never references filing timestamps DOES exist:
+fixed 4-digit year, then exhaustively enumerated unpadded month/day/hour/
+minute[/second] widths, calendar-validated; a filename is usable only when
+EXACTLY ONE distinct valid datetime exists, otherwise dropped. Measured on
+the stride corpus's stored URLs:
+
+| surface | usable | ambiguous (dropped) | other |
+|---|---|---|---|
+| staff filenames | 6/22 (**27%**) | 16 | 0 |
+| citizen filenames | 5/14 | 1 | 8 uuid-style, no timestamp run |
+
+Disposition: the rule is **not wired into any runtime**. Combined with
+53% staff presence, it would feed roughly one in seven kept tickets — too
+thin to carry a published check, and unambiguity correlates with digit
+shape, biasing whatever residue remains. If Stage 4 analysis ever consults
+filename timestamps as corroboration, it uses THIS rule only, and
+publishes its drop rate beside any number it touches. For the locked
+window, check 3 records as inputless-by-ruling, not zero-inputs-by-data.
