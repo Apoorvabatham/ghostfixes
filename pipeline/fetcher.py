@@ -33,7 +33,15 @@ class PortalClient:
             kwargs = {
                 "headers": {"User-Agent": self._user_agent},
                 "timeout": self._timeout,
-                "follow_redirects": True,
+                # follow_redirects deliberately left False (pre-probe
+                # review, 2026-08-26): a followed chain puts un-gated wire
+                # requests on the network inside one limiter window
+                # (invariant 5) and hides them from request accounting. A
+                # 3xx is a recorded fact for the caller, never something
+                # to chase silently. Measured basis: CKAN bulk URLs and
+                # the portal surfaces serve 2xx directly with no redirect
+                # hop (2026-08-26 checks), so nothing real depends on
+                # following.
             }
             if self._transport is not None:
                 kwargs["transport"] = self._transport

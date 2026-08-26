@@ -550,6 +550,73 @@ class AgreementGuardTests(Harness):
         self.assertEqual(stats["scrape_done"], 12)
 
 
+class GarbageBodyGuardTests(Harness):
+    """Regression (pre-probe review, 2026-08-26): SurfaceGuard.record_success
+    used to fire BEFORE parse_detail, so a sustained 200-with-unparsable-body
+    streak reset itself every ticket — success-then-failure per iteration —
+    and the run exited green while every candidate degraded to FAILED,
+    letting every later batch re-burn its budget on the same prefix."""
+
+    def test_sustained_unparsable_200s_halt_via_surface_guard(self):
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            if "portal.test/detail" in str(request.url):
+                # Valid HTTP, bytes that will never parse as JSON.
+                return httpx.Response(200, content=b"<html>maintenance</html>",
+                                      headers={"Content-Type": "text/html"})
+            return httpx.Response(200, content=png_bytes())
+        clock = ManualClock()
+        client = PortalClient(
+            "GhostFixes/test",
+            limiter=GlobalLimiter(clock=clock.clock, sleep=clock.sleep),
+            transport=httpx.MockTransport(handler))
+        runner = SweepRunner(StubAdapter(), client,
+                             SweepJournal(self.jpath), HashLog(self.hpath),
+                             self.manifest)
+        self._closables.append(runner.journal)
+        self._closables.append(runner.hashlog)
+        self._closables.append(client)
+        with self.assertRaises(SurfaceDegraded):
+            runner.run()
+        failed = [r for r in runner.journal.state_map().values()
+                  if r["state"] == "failed"]
+        self.assertEqual(len(failed), 5)    # guard limit reached, then halt
+
+    def test_one_bad_body_does_not_poison_a_healthy_streak(self):
+        # The flip side: after the fix, a single unparsable body counts as
+        # one surface failure and the next good ticket resets the streak.
+        seen = []
+        bad = {"100": True}                 # first candidate gets garbage
+
+        def handler(request):
+            seen.append(request)
+            if "portal.test/detail" in str(request.url):
+                tid = str(request.url).rsplit("/", 1)[1]
+                if bad.get(tid):
+                    return httpx.Response(200, content=b"<html></html>")
+                return httpx.Response(200, json=payloads_for(int(tid)))
+            return httpx.Response(200, content=png_bytes())
+        clock = ManualClock()
+        client = PortalClient(
+            "GhostFixes/test",
+            limiter=GlobalLimiter(clock=clock.clock, sleep=clock.sleep),
+            transport=httpx.MockTransport(handler))
+        stub_manifest = self.manifest[:2]
+        runner = SweepRunner(StubAdapter(), client,
+                             SweepJournal(self.jpath), HashLog(self.hpath),
+                             stub_manifest)
+        self._closables.append(runner.journal)
+        self._closables.append(runner.hashlog)
+        self._closables.append(client)
+        stats = runner.run()
+        # First ticket fails (its id ends in 0 — not a .7 drop), second
+        # succeeds; SurfaceGuard never fires.
+        self.assertEqual(stats["failed"], 1)
+        self.assertEqual(stats["scrape_done"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
 

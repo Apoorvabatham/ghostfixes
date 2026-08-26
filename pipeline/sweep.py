@@ -340,8 +340,16 @@ class SweepRunner:
                                 http_status=resp.status_code)
             self.guard.record_failure(f"detail {tid} HTTP {resp.status_code}")
             return "failed"
-        self.guard.record_success()
+        # Success is recorded only once the body has actually parsed
+        # (pre-probe review, 2026-08-26). Recording before parse_detail let
+        # a sustained 200-with-garbage-body streak reset itself on every
+        # ticket — each iteration scored success-then-failure — so the run
+        # exited green while every candidate degraded to FAILED and every
+        # later batch re-burned its budget on the same prefix. A 200 whose
+        # bytes will not parse IS a surface failure (§9.6), same family as
+        # the F1 near-miss this file's docstring records.
         detail = self.adapter.parse_detail(resp.json())
+        self.guard.record_success()
         member, parsed = self.adapter.selection.is_stage_b_member(
             detail.filed_at_raw)
         csv_date = self._csv_date(tid)

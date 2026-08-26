@@ -89,5 +89,30 @@ class LimiterWiringTests(unittest.TestCase):
         self.assertEqual(len(seen), 2)
 
 
+class RedirectPolicyTests(unittest.TestCase):
+    def test_3xx_is_returned_not_followed(self):
+        # Pre-probe review (2026-08-26): following a redirect chain puts
+        # un-gated wire requests on the network inside one limiter window
+        # (invariant 5) and hides them from request accounting. A 3xx is
+        # returned to the caller as the recorded fact it is.
+        seen = []
+
+        def handler(request):
+            seen.append(request)
+            return httpx.Response(
+                302, headers={"Location": "https://portal.test/elsewhere"})
+
+        fc = ManualClock()
+        with PortalClient(UA, limiter=GlobalLimiter(clock=fc.clock,
+                                                    sleep=fc.sleep),
+                          transport=httpx.MockTransport(handler)) as pc:
+            resp = pc.get_bytes("https://portal.test/start")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.headers["Location"],
+                         "https://portal.test/elsewhere")
+        self.assertEqual(len(seen), 1)      # one gated request, no chase
+        self.assertEqual(fc.sleeps, [])     # no second gate entry either
+
+
 if __name__ == "__main__":
     unittest.main()
