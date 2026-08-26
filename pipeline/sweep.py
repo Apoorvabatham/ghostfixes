@@ -243,7 +243,8 @@ class SweepRunner:
                            for rec in manifest}
         self.image_totals = {"images_hashed": 0, "images_failed_object": 0}
 
-    def run(self, limit=None, request_budget=None):
+    def run(self, limit=None, request_budget=None,
+            progress_every=None, on_progress=None):
         stats = {
             "candidates": 0, "api_kept": 0, "api_dropped": 0,
             "scrape_done": 0, "failed": 0,
@@ -288,6 +289,14 @@ class SweepRunner:
                 stats["failed"] += 1
                 continue
             stats[outcome] = stats.get(outcome, 0) + 1
+            if (progress_every and on_progress
+                    and stats["candidates"] % progress_every == 0):
+                # Heartbeat for CI logs: where the batch is, not just how
+                # it ended — a cancelled job still shows its position.
+                snapshot = dict(stats)
+                snapshot["requests_made"] = self.client.requests_made
+                snapshot["at_ticket"] = tid
+                on_progress(snapshot)
         if exhausted:
             # Natural end of manifest: the trailing partial batch is a real
             # sample and gets evaluated. A `limit` stop or a raised halt

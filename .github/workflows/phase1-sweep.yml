@@ -5,13 +5,25 @@ name: phase1-sweep
 # journal on disk makes every batch exact-once resumable.
 #
 # Rate limit and User-Agent are enforced in-process by pipeline/limiter.py
-# and probe/phase1_dryrun.py (invariant 5) — one request started at most
-# every 3 s across all hosts, honest identifying UA with contact email.
+# (invariant 5) — one request started at most every 3 s across all hosts,
+# honest identifying UA with contact email. Because max_in_flight=1, the
+# EFFECTIVE per-request interval is max(3 s, server response time); family
+# hosts have measured multi-second responses, so wall-clock planning uses
+# 4 s/request, not the 3 s floor.
+#
+# Batch sizing against the cap (why not 6500): 6500 requests x 3 s floor is
+# already 325 min of pure rate limiting against a 350 min timeout — any
+# latency above the floor cancels the job and, before the always()-commit
+# below existed, stranded the whole batch uncommitted. 4500 requests plan
+# to 225 min at the floor / ~300 min at a pessimistic 4 s average, leaving
+# real margin. The next batch resumes exactly where this one stopped.
 #
 # Results SELF-PUBLISH like every other CI output: the runner commits
-# data/manifest.jsonl, data/journal.jsonl and data/hashes.jsonl back to
-# main. hashes.jsonl is the public tamper-evidence spine (Amendment B
-# rule 4): SHA-256 of image bytes only — no image files, ever (invariant 6).
+# data/* checkpoints AND docs/actions-sweep-lastbatch.log back to main,
+# with if:always() so a halted, degraded or timed-out batch still lands its
+# partial state and its error tail in git. hashes.jsonl is the public
+# tamper-evidence spine (Amendment B rule 4): SHA-256 of image bytes only —
+# no image files, ever (invariant 6).
 #
 # NO heredocs in any run block (see stage0-reachability.yml header for why).
 #
@@ -23,8 +35,8 @@ on:
   workflow_dispatch:
     inputs:
       max_requests:
-        description: 'Request budget for this batch (~1200 req/h at the hard limit)'
-        default: '6500'
+        description: 'Request budget for this batch'
+        default: '4500'
   push:
     branches: [main]
     paths: ['.github/workflows/phase1-sweep.yml']
@@ -36,7 +48,7 @@ concurrency:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 355
     permissions:
       contents: write
     steps:
@@ -53,19 +65,23 @@ jobs:
 
       - name: Run one checkpointed batch
         run: |
+          set -o pipefail
           PYTHONPATH="$PWD/pylibs:$PWD" python3 probe/phase1_dryrun.py \
             --data-dir data \
             --limit 999999 \
-            --max-requests "${{ github.event.inputs.max_requests || '6500' }}"
+            --max-requests "${{ github.event.inputs.max_requests || '4500' }}" \
+            2>&1 | tee docs/actions-sweep-lastbatch.log
 
       - name: Show batch tail
         if: always()
-        run: tail -25 probe/out/sweep_ci.log 2>/dev/null || true
+        run: tail -40 docs/actions-sweep-lastbatch.log || true
 
       - name: Commit checkpoint
+        if: always()
         run: |
           git config user.name "ghostfixes-runner"
           git config user.email "actions@users.noreply.github.com"
-          git add data/
-          git diff --cached --quiet || git commit -m "Phase 1 checkpoint: batch complete"
-          git push
+          git add data/ docs/actions-sweep-lastbatch.log
+          git diff --cached --quiet || git commit -m "Phase 1 checkpoint: batch outcome recorded"
+          git pull --rebase -q origin main || true
+          git push || { sleep 10; git pull --rebase -q origin main || true; git push; }

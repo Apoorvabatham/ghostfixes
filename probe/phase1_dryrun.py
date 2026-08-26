@@ -166,9 +166,16 @@ def main(argv=None):
 
     jpath = os.path.join(outdir, f"journal{suffix}.jsonl")
     hpath = os.path.join(outdir, f"hashes{suffix}.jsonl")
+    def show_progress(snapshot):
+        print(f"progress: {snapshot['candidates']} candidates processed, "
+              f"{snapshot['requests_made']} requests, "
+              f"kept={snapshot['api_kept']} dropped={snapshot['api_dropped']} "
+              f"at={snapshot['at_ticket']}", flush=True)
+
     with SweepJournal(jpath) as journal, HashLog(hpath) as hashlog:
         runner = SweepRunner(ADAPTER, client, journal, hashlog, subset)
-        stats = runner.run(request_budget=args.max_requests)
+        stats = runner.run(request_budget=args.max_requests,
+                           progress_every=50, on_progress=show_progress)
         elapsed = time.monotonic() - started
 
     summary = {

@@ -552,3 +552,20 @@ class AgreementGuardTests(Harness):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HeartbeatTests(Harness):
+    def test_progress_callback_fires_per_n_candidates(self):
+        seen = []
+        clock = ManualClock()
+        client = PortalClient(
+            "GhostFixes/test",
+            limiter=GlobalLimiter(clock=clock.clock, sleep=clock.sleep),
+            transport=make_transport([]))
+        runner = SweepRunner(StubAdapter(), client,
+                             SweepJournal(self.jpath), HashLog(self.hpath),
+                             self.manifest)
+        runner.run(progress_every=2, on_progress=seen.append)
+        self.assertGreaterEqual(len(seen), 2)
+        self.assertIn("requests_made", seen[0])
+        client.close()
