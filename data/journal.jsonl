@@ -352,3 +352,12 @@
 {"api_date": "2025-01-01T09:22:27", "category": "Solid Waste (Garbage) Related", "citizen_status": "Closed", "csv_date_raw": "2025-01-01 09:22:00.000000000", "image_urls": ["https://sahaaya2.bbmp.gov.in/ProjectImages/GrievanceImages/20644680/20251612121STAFF20644680001.jpg"], "staff_status": "Closed", "state": "api_kept", "sub_category": "Garbage vehicle not arrived", "ticket_id": "20644680", "ts_utc": "2026-08-25T22:23:36Z", "ward": "Rajagopala Nagar"}
 {"images_failed_object": 0, "images_hashed": 1, "state": "scrape_done", "ticket_id": "20644680", "ts_utc": "2026-08-25T22:23:39Z"}
 {"state": "candidate", "ticket_id": "20644682", "ts_utc": "2026-08-25T22:23:39Z"}
+{"error": "ReadTimeout", "stage": "exception", "state": "failed", "ticket_id": "20644682", "ts_utc": "2026-08-26T12:33:35Z"}
+{"state": "candidate", "ticket_id": "20644684", "ts_utc": "2026-08-26T12:33:35Z"}
+{"error": "ReadTimeout", "stage": "exception", "state": "failed", "ticket_id": "20644684", "ts_utc": "2026-08-26T12:34:06Z"}
+{"state": "candidate", "ticket_id": "20644685", "ts_utc": "2026-08-26T12:34:06Z"}
+{"error": "ReadTimeout", "stage": "exception", "state": "failed", "ticket_id": "20644685", "ts_utc": "2026-08-26T12:34:37Z"}
+{"state": "candidate", "ticket_id": "20644686", "ts_utc": "2026-08-26T12:34:37Z"}
+{"error": "ReadTimeout", "stage": "exception", "state": "failed", "ticket_id": "20644686", "ts_utc": "2026-08-26T12:35:08Z"}
+{"state": "candidate", "ticket_id": "20644689", "ts_utc": "2026-08-26T12:35:08Z"}
+{"error": "ReadTimeout", "stage": "exception", "state": "failed", "ticket_id": "20644689", "ts_utc": "2026-08-26T12:35:40Z"}
