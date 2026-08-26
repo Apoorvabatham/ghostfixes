@@ -31,15 +31,17 @@ name: phase1-sweep
 # keep their own limiter and double the global request rate, so overlapping
 # runs queue behind one another instead.
 
+# Dispatch-only, deliberately: Actions runners cannot sustain this sweep
+# (item 7 correction, docs/stage0-report.md — sustained access degrades to
+# httpx.ReadTimeout from the datacenter vantage while the residential
+# vantage holds). Every workflow-file push used to auto-burn a doomed batch;
+# there is no push trigger anymore. Phase 1 runs locally in bounded batches.
 on:
   workflow_dispatch:
     inputs:
       max_requests:
         description: 'Request budget for this batch'
         default: '4500'
-  push:
-    branches: [main]
-    paths: ['.github/workflows/phase1-sweep.yml']
 
 concurrency:
   group: phase1-sweep

@@ -299,7 +299,10 @@ docs/            per-city probe reports and written findings
 ## Stack
 
 Python 3.11 (`httpx`, `pillow`, `imagehash`, `pyexiftool`; Playwright only if forced).
-Astro/Vite + Leaflet. GitHub Actions cron. No paid services anywhere.
+Astro/Vite + Leaflet. GitHub Actions cron for probes and site builds only —
+sweep batches run from a residential vantage (Actions runners degrade to
+ReadTimeout under sustained load on this portal family; docs/stage0-report.md
+Addendum 3, scope-lock Amendment F). No paid services anywhere.
 
 ## Stop and ask before
 

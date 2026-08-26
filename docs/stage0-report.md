@@ -341,3 +341,44 @@ as the reason the decision could not wait for scale.
    paste mode retired 2026-08-25: CI jobs self-publish their outputs by
    committing them under `docs/` (job-level `contents: write`) and results
    arrive via `git pull`. Mandatory pattern for all future CI output.
+
+---
+
+# Addendum 3 — 2026-08-26: item 7 CORRECTED — sustained access is vantage-bound
+
+The round-1 conclusion ("both hosts the Stage 1 sweep depends on answer from
+Actions runners, so the free-runner execution plan is viable") was wrong, and
+the error is now measured: **single-GET reachability does not imply sustained
+API access.** Maintainer-read Actions logs (private repo) show three phase1
+batches failing identically:
+
+```
+pipeline.sweep.SurfaceDegraded: 5 consecutive surface failures
+(last: 20652544: ReadTimeout) — degraded; halting per scope-lock §9.6
+```
+
+`httpx.ReadTimeout` against the live detail endpoint from GitHub Actions
+runners. Run 32905047191 sustained ~3 h 40 m before degrading (positionally
+≥1,782 candidates into the manifest, ≈1,800–3,700 requests, all
+uncheckpointed under the pre-fix workflow); two subsequent runs died in
+~3 minutes. Meanwhile the residential vantage carried a ~900-request local
+batch cleanly (checkpoint 1, commit 8614ece).
+
+Findings recorded:
+
+1. **Item 7's probe design was insufficient** — it measured one GET per host,
+   which is exactly the measurement that cannot generalize to load. Any
+   future reachability claim must state BOTH its vantage AND its duration.
+2. **SurfaceGuard behaved as designed**: five consecutive transport failures
+   halted the batch and named the surface instead of logging stale silence
+   (§9.6). The guard converted an environmental fact into a readable signal;
+   the workflow's missing `if: always()` then hid it — fixed separately
+   (8a4b145).
+3. **Operating model:** Phase 1 executes locally (residential vantage) in
+   bounded, checkpointed batches — scope-lock Amendment F. The free-CI model
+   does not work for this portal.
+4. **Forkability flag (Stage 6/README, stack spec):** `adapters/<city>.py`
+   must carry a declared vantage requirement alongside its endpoints. A
+   forking civic group should plan to run sweeps from a residential
+   connection; GitHub Actions cron is suitable for probes and site builds,
+   not sustained per-ticket fetching against this portal family.

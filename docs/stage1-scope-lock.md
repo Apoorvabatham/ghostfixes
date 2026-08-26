@@ -492,3 +492,33 @@ shape, biasing whatever residue remains. If Stage 4 analysis ever consults
 filename timestamps as corroboration, it uses THIS rule only, and
 publishes its drop rate beside any number it touches. For the locked
 window, check 3 records as inputless-by-ruling, not zero-inputs-by-data.
+
+---
+
+# Amendment F — 2026-08-26: Phase 1 executes locally; free-CI sweep retired
+
+Measured basis: docs/stage0-report.md Addendum 3 — three CI batches failed
+identically on `httpx.ReadTimeout` from Actions runners (SurfaceGuard halt,
+§9.6, working as designed) while the residential vantage sustained a
+~900-request local batch cleanly. Item 7's one-GET-per-host probe could not
+see this; sustained access is a different measurement and it is
+vantage-bound.
+
+Rules:
+
+1. **All Phase 1 sweeping runs locally**, resumed from checkpoint 1
+   (8614ece), in bounded batches (`--max-requests`) with a checkpoint commit
+   between batches. The journal + hashes.jsonl make every interruption
+   exact-once resumable; the failed CI runs' ~1,800–3,700 uncheckpointed
+   requests are simply re-decided.
+2. **`phase1-sweep.yml` loses its push trigger** (dispatch-only, not
+   dispatched): with CI unusable for sweeps, every workflow-file edit used
+   to auto-burn a doomed batch from a blocked vantage. The if:always()
+   self-publishing fix stays — it was the right fix for the wrong diagnosis.
+3. **Forkability consequence carried to Stage 6/README:** the adapter
+   contract gains a declared vantage requirement per city; a forking group
+   must run its sweep from a residential connection against portal families
+   that behave like this one. The stack spec's "GitHub Actions cron" line is
+   annotated accordingly in CLAUDE.md.
+4. Request-budget planning figures (§6, as amended) are unchanged; only the
+   execution venue moves.
