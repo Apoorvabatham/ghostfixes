@@ -522,3 +522,26 @@ Rules:
    annotated accordingly in CLAUDE.md.
 4. Request-budget planning figures (§6, as amended) are unchanged; only the
    execution venue moves.
+
+**Correction 2026-08-26 (same day, after the first local leg):** the
+attribution above was wrong and is now measured — see docs/stage0-report.md
+Addendum 4. The three CI failures and the first local probe leg (commit
+dfe00bf: five consecutive ReadTimeouts) share one cause: the detail endpoint
+went globally unresponsive around ~01:52 UTC 2026-08-26, for every caller —
+including a vantage+ticket combination that had succeeded hours earlier.
+"Sustained access is vantage-bound" is retired as an attribution. What
+remains measured is venue-relevant and stands: checkpoint 1 carried a
+~900-request local batch cleanly while the endpoint was up. The retirement
+of free-CI sweeping stands on that operational record, not on runner
+blocking, and is not revisited here.
+
+Execution consequence — the resume gate, in force until the first detail
+call answers again:
+
+- No request-spending probes beyond the gate check itself.
+- At most once per 30–60 minutes: portal root + exactly ONE detail call,
+  against the FIRST PENDING ticket id in manifest order — mechanical,
+  never hand-picked. Implemented as `probe/health_check.py`.
+- Bounded local batches resume only when that detail call returns 200;
+  a root 200 alone proves nothing about the detail surface (measured:
+  root served 1.7 s responses throughout the outage).

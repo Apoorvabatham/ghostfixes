@@ -382,3 +382,50 @@ Findings recorded:
    forking civic group should plan to run sweeps from a residential
    connection; GitHub Actions cron is suitable for probes and site builds,
    not sustained per-ticket fetching against this portal family.
+
+---
+
+# Addendum 4 — 2026-08-26: Addendum 3's attribution CORRECTED — one global endpoint outage, not runner blocking
+
+Maintainer-measured 2026-08-26 from OUTSIDE the sandbox (the sandbox cannot
+make this discrimination by construction):
+
+| request | result |
+|---|---|
+| `data.opencity.in` | 200, 1.0 s |
+| `sahaaya2.bbmp.gov.in/` (root) | 200, 1.7 s |
+| detail `?ComaplaintID=20644689` | hang, 0 bytes, 35 s |
+| detail `?ComaplaintID=20644645` | hang, 0 bytes, 35 s |
+
+20644645 is not an arbitrary ticket: checkpoint 1 scraped it successfully at
+~2026-08-25T22:20Z (`data/hashes.jsonl` carries its image hashes). The
+egress path is fine, the host is fine, and the detail endpoint answers
+nobody — including a ticket it served hours earlier.
+
+Reinterpreting Addendum 3's evidence on that basis: run 32905047191 started
+healthy at ~22:13 UTC and degraded at ~01:52 UTC after ~3 h 40 m; the two
+follow-up runs died within minutes. The coherent single cause is that **the
+detail endpoint went globally unresponsive around ~01:52 UTC 2026-08-26** —
+run 1 simply ran while the endpoint was still up, and every later failure
+wherever it ran (Actions runners; the first Amendment-F local leg,
+12:33–12:35 UTC, commit dfe00bf) is that outage. "Sustained access is
+vantage-bound" was a wrong attribution drawn from a real signal. The
+corrected statement is narrower: per-ticket fetching needs a healthy
+endpoint from ANY vantage, and when this endpoint degrades it degrades
+globally — root and bulk hosts keep serving while it does.
+
+What stands from Addendum 3: the item-7 lesson (reachability claims must
+state BOTH vantage AND duration); SurfaceGuard's halts were correct readings
+of a real outage, wherever they fired; the forkability flag. What falls:
+any claim that Actions runners are specifically blocked or degraded. **The
+free-CI retirement stands anyway**, on the operational record rather than on
+attribution: local execution is proven sufficient while the endpoint is up
+(checkpoint 1's ~900-request batch), and nothing suggests CI would have
+fared better inside a global endpoint outage.
+
+Resume gate (mirrored in scope-lock Amendment F): no further request-
+spending probes while the endpoint is down. At most once per 30–60 minutes:
+portal root + exactly ONE detail call against the first pending ticket id
+in manifest order (mechanical selection; implemented as
+`probe/health_check.py`). Bounded local batches resume only when that
+detail call returns 200.
